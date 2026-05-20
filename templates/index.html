@@ -1,0 +1,2905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retail Store Analytics - Motion Tracking & Heatmap</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #1d4ed8;
+            --primary-dark: #1e3a8a;
+            --secondary: #dc2626;
+            --success: #059669;
+            --cyan: #0891b2;
+            --orange: #f97316;
+            --bg: #0b1220;
+            --bg-soft: #0f172a;
+            --panel: rgba(17, 24, 39, 0.92);
+            --panel-strong: #111827;
+            --panel-border: rgba(148, 163, 184, 0.18);
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5f5;
+            --text-muted: #94a3b8;
+            --gradient-primary: linear-gradient(135deg, #1d4ed8 0%, #0ea5e9 100%);
+            --gradient-heat: linear-gradient(135deg, #dc2626 0%, #f97316 60%, #facc15 100%);
+            --shadow-soft: 0 20px 40px rgba(2, 6, 23, 0.35);
+            --badge-bg: rgba(14, 165, 233, 0.15);
+            --badge-border: rgba(14, 165, 233, 0.25);
+        }
+
+        [data-theme="light"] {
+            --primary: #2563eb;
+            --primary-dark: #1e40af;
+            --secondary: #dc2626;
+            --success: #059669;
+            --cyan: #0e7490;
+            --orange: #f97316;
+            --bg: #f8fafc;
+            --bg-soft: #f1f5f9;
+            --panel: rgba(255, 255, 255, 0.9);
+            --panel-strong: #ffffff;
+            --panel-border: rgba(15, 23, 42, 0.12);
+            --text-primary: #0f172a;
+            --text-secondary: #334155;
+            --text-muted: #64748b;
+            --gradient-primary: linear-gradient(135deg, #0ea5e9 0%, #65718b 100%);
+            --gradient-heat: linear-gradient(135deg, #ef4444 0%, #f97316 60%, #facc15 100%);
+            --shadow-soft: 0 15px 30px rgba(15, 23, 42, 0.12);
+            --badge-bg: rgba(14, 165, 233, 0.12);
+            --badge-border: rgba(14, 165, 233, 0.3);
+        }
+
+        body {
+            font-family: 'Work Sans', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: radial-gradient(circle at top left, rgba(14, 165, 233, 0.12), transparent 45%),
+                        radial-gradient(circle at 30% 85%, rgba(249, 115, 22, 0.12), transparent 40%),
+                        var(--bg);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        [data-theme="light"] body {
+            background: radial-gradient(circle at top left, rgba(14, 165, 233, 0.15), transparent 45%),
+                        radial-gradient(circle at 70% 20%, rgba(14, 116, 144, 0.12), transparent 40%),
+                        var(--bg);
+        }
+
+        /* Animated Background */
+        .bg-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+        }
+
+        .bg-animation::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 20% 20%, rgba(14, 165, 233, 0.12) 0%, transparent 45%),
+                        radial-gradient(circle at 80% 80%, rgba(249, 115, 22, 0.12) 0%, transparent 45%),
+                        radial-gradient(circle at 60% 30%, rgba(34, 197, 94, 0.08) 0%, transparent 45%);
+            animation: bgPulse 15s ease-in-out infinite;
+        }
+
+        @keyframes bgPulse {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            50% { transform: translate(-5%, -5%) rotate(5deg); }
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(180deg, rgba(49, 58, 80, 0.486) 0%, rgba(5, 68, 216, 0.6) 100%);
+            padding: 20px 40px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--panel-border);
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .logo-icon {
+            width: 50px;
+            height: 50px;
+            background: var(--gradient-primary);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: var(--shadow-soft);
+        }
+
+        .logo-text h1 {
+            font-family: 'Space Grotesk', 'Work Sans', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .logo-text span {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 30px;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            position: relative;
+            padding: 5px 0;
+        }
+
+        .nav-links a:hover {
+            color: var(--text-primary);
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--gradient-primary);
+            transition: width 0.3s ease;
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--badge-bg);
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 1px solid var(--badge-border);
+        }
+
+        .role-badge {
+            background: rgba(14, 165, 233, 0.12);
+            border: 1px solid rgba(14, 165, 233, 0.25);
+            padding: 6px 12px;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .theme-toggle {
+            border: 1px solid var(--panel-border);
+            background: var(--panel-strong);
+            color: var(--text-primary);
+            padding: 8px 14px;
+            border-radius: 999px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .theme-toggle:hover {
+            border-color: rgba(113, 116, 118, 0.6);
+            box-shadow: var(--shadow-soft);
+            transform: translateY(-1px);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #22c55e;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+
+        /* Main Container */
+        .main-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px 40px;
+        }
+
+        /* Hero Section */
+        .hero {
+            text-align: center;
+            padding: 40px 0 20px;
+            position: relative;
+        }
+
+        .hero h1 {
+            font-family: 'Space Grotesk', 'Work Sans', sans-serif;
+            font-size: clamp(2rem, 4vw, 3.2rem);
+            font-weight: 700;
+            margin-bottom: 16px;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, #ba8b8b 0%, #27363d 55%, #fde68a 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero h2 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: var(--text-muted);
+        }
+
+        .hero p {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            max-width: 700px;
+            margin: 0 auto 30px;
+            line-height: 1.8;
+        }
+
+        .quick-steps {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 18px;
+            margin: 20px auto 10px;
+            max-width: 1100px;
+        }
+
+        .quick-step-card {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: 18px;
+            padding: 18px 20px;
+            text-align: left;
+            box-shadow: var(--shadow-soft);
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .quick-step-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(14, 165, 233, 0.4);
+        }
+
+        .quick-step-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .quick-step-title span {
+            width: 34px;
+            height: 34px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            background: rgba(14, 165, 233, 0.2);
+        }
+
+        .quick-step-card p {
+            color: var(--text-muted);
+            font-size: 0.92rem;
+            line-height: 1.5;
+        }
+
+        .tech-badges {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 30px;
+        }
+
+        .tech-badge {
+            background: var(--panel);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            border: 1px solid var(--panel-border);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.3s ease;
+        }
+
+        .tech-badge:hover {
+            border-color: rgba(14, 165, 233, 0.6);
+            transform: translateY(-2px);
+        }
+
+        .tech-badge span {
+            color: var(--primary);
+        }
+
+        /* Video Input Section */
+        .input-section {
+            background: var(--panel);
+            border-radius: 25px;
+            padding: 40px;
+            border: 1px solid var(--panel-border);
+            margin-bottom: 40px;
+        }
+
+        .input-section h3 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .input-section > p {
+            color: var(--text-secondary);
+            margin-bottom: 30px;
+        }
+
+        .input-options {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 25px;
+        }
+
+        .camera-select {
+            margin-top: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .camera-select label {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .input-option {
+            background: var(--bg-soft);
+            border-radius: 20px;
+            padding: 30px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .input-option:hover {
+            border-color: rgba(14, 165, 233, 0.6);
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-soft);
+        }
+
+        .input-option.active {
+            border-color: rgba(14, 165, 233, 0.8);
+            background: rgba(14, 165, 233, 0.12);
+        }
+
+        .input-option-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+        }
+
+        .input-option:first-child .input-option-icon {
+            background: var(--gradient-primary);
+        }
+
+        .input-option:last-child .input-option-icon {
+            background: var(--gradient-heat);
+        }
+
+        .input-option h4 {
+            font-size: 1.3rem;
+            margin-bottom: 10px;
+        }
+
+        .input-option p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* File Upload Area */
+        .upload-area {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .upload-area.active {
+            display: block;
+        }
+
+        .upload-dropzone {
+            border: 2px dashed var(--panel-border);
+            border-radius: 20px;
+            padding: 50px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .upload-dropzone:hover,
+        .upload-dropzone.dragover {
+            border-color: rgba(14, 165, 233, 0.8);
+            background: rgba(14, 165, 233, 0.08);
+        }
+
+        .upload-dropzone-icon {
+            font-size: 50px;
+            margin-bottom: 20px;
+        }
+
+        .upload-dropzone h4 {
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+        }
+
+        .upload-dropzone p {
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+        }
+
+        .upload-dropzone .supported-formats {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            background: var(--panel-strong);
+            padding: 8px 16px;
+            border-radius: 8px;
+            display: inline-block;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .selected-file {
+            margin-top: 20px;
+            padding: 20px;
+            background: var(--bg-soft);
+            border-radius: 15px;
+            border: 1px solid var(--success);
+            display: none;
+        }
+
+        .selected-file.active {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .file-info-icon {
+            width: 50px;
+            height: 50px;
+            background: rgba(14, 165, 233, 0.2);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .file-info-text h5 {
+            font-size: 1rem;
+            margin-bottom: 5px;
+        }
+
+        .file-info-text p {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .remove-file {
+            background: rgba(220, 38, 38, 0.2);
+            border: none;
+            padding: 10px 15px;
+            border-radius: 10px;
+            color: var(--secondary);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .remove-file:hover {
+            background: var(--secondary);
+            color: white;
+        }
+
+        /* Camera Preview */
+        .camera-area {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .camera-area.active {
+            display: block;
+        }
+
+        .camera-preview {
+            background: var(--bg-soft);
+            border-radius: 20px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .camera-preview video {
+            width: 100%;
+            max-width: 800px;
+            border-radius: 15px;
+            background: #000;
+        }
+
+        .camera-placeholder {
+            width: 100%;
+            max-width: 800px;
+            aspect-ratio: 16/9;
+            background: linear-gradient(135deg, rgba(30, 64, 175, 0.2) 0%, rgba(15, 23, 42, 0.9) 100%);
+            border-radius: 15px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .camera-placeholder-icon {
+            font-size: 60px;
+            opacity: 0.5;
+        }
+
+        .camera-placeholder p {
+            color: var(--text-secondary);
+        }
+
+        /* Video Preview Section */
+        .preview-section {
+            background: var(--panel);
+            border-radius: 25px;
+            padding: 40px;
+            border: 1px solid var(--panel-border);
+            margin-bottom: 40px;
+            display: none;
+        }
+
+        .preview-section.active {
+            display: block;
+        }
+
+        .preview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .preview-header h3 {
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .preview-content {
+            display: grid;
+            grid-template-columns: 1.5fr 1fr;
+            gap: 30px;
+        }
+
+        .video-container {
+            background: var(--bg-soft);
+            border-radius: 20px;
+            padding: 15px;
+            position: relative;
+        }
+
+        .zone-canvas {
+            position: absolute;
+            inset: 15px;
+            border-radius: 15px;
+            pointer-events: none;
+        }
+
+        .zone-editor {
+            background: var(--bg-soft);
+            border-radius: 15px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .zone-editor h4 {
+            font-size: 1.05rem;
+            color: var(--orange);
+        }
+
+        .zone-editor-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .zone-editor-actions .btn {
+            flex: unset;
+            padding: 10px 16px;
+            font-size: 0.9rem;
+        }
+
+        .video-display {
+            width: 100%;
+            border-radius: 15px;
+            background: #000;
+        }
+
+        .video-overlay {
+            position: absolute;
+            top: 25px;
+            left: 25px;
+            right: 25px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+
+        .overlay-badge {
+            background: rgba(15, 23, 42, 0.8);
+            padding: 8px 15px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .overlay-badge.live {
+            background: rgba(220, 38, 38, 0.9);
+        }
+
+        .preview-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Mode Selection */
+        .mode-selection {
+            background: var(--bg-soft);
+            border-radius: 15px;
+            padding: 25px;
+        }
+
+        .mode-selection h4 {
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+            color: var(--primary);
+        }
+
+        .mode-options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .mode-option {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+            background: var(--panel-strong);
+            border-radius: 12px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .mode-option:hover {
+            border-color: rgba(14, 165, 233, 0.3);
+        }
+
+        .mode-option.active {
+            border-color: rgba(14, 165, 233, 0.7);
+            background: rgba(14, 165, 233, 0.12);
+        }
+
+        .mode-option input {
+            display: none;
+        }
+
+        .mode-radio {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(148, 163, 184, 0.5);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .mode-option.active .mode-radio {
+            border-color: rgba(14, 165, 233, 0.9);
+        }
+
+        .mode-radio::after {
+            content: '';
+            width: 10px;
+            height: 10px;
+            background: var(--primary);
+            border-radius: 50%;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .mode-option.active .mode-radio::after {
+            opacity: 1;
+        }
+
+        .mode-info h5 {
+            font-size: 1rem;
+            margin-bottom: 3px;
+        }
+
+        .mode-info p {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        /* Keyboard Controls */
+        .keyboard-controls {
+            background: var(--bg-soft);
+            border-radius: 15px;
+            padding: 25px;
+        }
+
+        .keyboard-controls h4 {
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+            color: var(--cyan);
+        }
+
+        .control-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .control-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+        }
+
+        .control-key {
+            background: var(--panel-strong);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            min-width: 35px;
+            text-align: center;
+            color: var(--cyan);
+            border: 1px solid var(--panel-border);
+        }
+
+        .control-desc {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        /* Action Buttons */
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 14px 30px;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .btn-primary {
+            background: var(--gradient-primary);
+            color: white;
+            box-shadow: 0 12px 30px rgba(14, 165, 233, 0.35);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(14, 165, 233, 0.5);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-primary);
+            border: 2px solid var(--panel-border);
+        }
+
+        .btn-secondary:hover {
+            border-color: rgba(14, 165, 233, 0.7);
+            background: rgba(14, 165, 233, 0.12);
+        }
+
+        .btn-danger {
+            background: var(--gradient-heat);
+            color: white;
+            box-shadow: 0 10px 30px rgba(249, 115, 22, 0.4);
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(249, 115, 22, 0.5);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #059669 0%, #0ea5e9 100%);
+            color: white;
+            box-shadow: 0 10px 30px rgba(14, 165, 233, 0.35);
+        }
+
+        .btn-success:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(14, 165, 233, 0.5);
+        }
+
+        /* Stats Section */
+        .stats-section {
+            margin-bottom: 40px;
+            display: none;
+        }
+
+        .stats-section.active {
+            display: block;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+
+        .stat-card {
+            background: var(--panel);
+            padding: 25px;
+            border-radius: 20px;
+            border: 1px solid var(--panel-border);
+            text-align: center;
+            transition: all 0.4s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: var(--gradient-primary);
+            transform: scaleX(0);
+            transition: transform 0.4s ease;
+        }
+
+        .stat-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-soft);
+        }
+
+        .stat-icon {
+            width: 50px;
+            height: 50px;
+            margin: 0 auto 15px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .stat-card:nth-child(1) .stat-icon { background: rgba(29, 78, 216, 0.2); }
+        .stat-card:nth-child(2) .stat-icon { background: rgba(220, 38, 38, 0.2); }
+        .stat-card:nth-child(3) .stat-icon { background: rgba(5, 150, 105, 0.2); }
+        .stat-card:nth-child(4) .stat-icon { background: rgba(14, 165, 233, 0.2); }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 5px;
+        }
+
+        .stat-card:nth-child(1) .stat-value { color: #60a5fa; }
+        .stat-card:nth-child(2) .stat-value { color: #f97316; }
+        .stat-card:nth-child(3) .stat-value { color: #34d399; }
+        .stat-card:nth-child(4) .stat-value { color: #38bdf8; }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .stats-chart-container img {
+            border: 1px solid var(--panel-border);
+            background: var(--panel-strong);
+        }
+
+        .saved-heatmap {
+            margin-top: 24px;
+            background: var(--panel);
+            border-radius: 20px;
+            border: 1px solid var(--panel-border);
+            padding: 20px;
+            display: none;
+        }
+
+        .saved-heatmap.active {
+            display: block;
+        }
+
+        .saved-heatmap h4 {
+            font-size: 1.1rem;
+            margin-bottom: 12px;
+            color: var(--orange);
+        }
+
+        .saved-heatmap img {
+            width: 100%;
+            border-radius: 12px;
+            display: block;
+        }
+
+        .saved-heatmap .heatmap-meta {
+            margin-top: 10px;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .saved-heatmap .heatmap-actions {
+            margin-top: 12px;
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .heatmap-download {
+            background: transparent;
+            color: var(--text-primary);
+            border: 2px solid var(--panel-border);
+            padding: 10px 18px;
+            border-radius: 10px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        .heatmap-download:hover {
+            border-color: rgba(14, 165, 233, 0.7);
+            background: rgba(14, 165, 233, 0.12);
+        }
+
+        /* Heatmap Legend */
+        .heatmap-legend {
+            background: var(--panel);
+            border-radius: 15px;
+            padding: 20px 30px;
+            margin-bottom: 40px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 30px;
+        }
+
+        .heatmap-legend.active {
+            display: flex;
+        }
+
+        .legend-title {
+            font-size: 1rem;
+            color: var(--text-secondary);
+        }
+
+        .legend-bar {
+            width: 250px;
+            height: 20px;
+            border-radius: 10px;
+            background: linear-gradient(90deg, #0ea5e9 0%, #22c55e 33%, #facc15 66%, #ef4444 100%);
+        }
+
+        .legend-labels {
+            display: flex;
+            justify-content: space-between;
+            width: 250px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        /* Settings Section */
+        .settings-section {
+            background: var(--panel);
+            border-radius: 25px;
+            padding: 40px;
+            border: 1px solid var(--panel-border);
+            margin-bottom: 40px;
+        }
+
+        .settings-section h3 {
+            font-size: 1.5rem;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 30px;
+        }
+
+        .settings-card {
+            background: var(--bg-soft);
+            border-radius: 15px;
+            padding: 25px;
+        }
+
+        .settings-card h4 {
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--primary);
+        }
+
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--panel-border);
+        }
+
+        .setting-item:last-child {
+            border-bottom: none;
+        }
+
+        .setting-label {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .setting-value {
+            background: var(--panel-strong);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-family: monospace;
+            color: var(--cyan);
+            border: 1px solid var(--panel-border);
+        }
+
+        .setting-input {
+            background: var(--panel-strong);
+            border: 1px solid var(--panel-border);
+            padding: 8px 16px;
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: monospace;
+            width: 100px;
+            text-align: center;
+        }
+
+        .setting-input:focus {
+            outline: none;
+            border-color: rgba(14, 165, 233, 0.7);
+        }
+
+        .setting-control {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 220px;
+            justify-content: flex-end;
+        }
+
+        .setting-range {
+            width: 160px;
+            accent-color: var(--primary);
+        }
+
+        .range-value {
+            background: var(--panel-strong);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-family: monospace;
+            color: var(--cyan);
+            border: 1px solid var(--panel-border);
+            min-width: 64px;
+            text-align: center;
+        }
+
+        .setting-select {
+            background: var(--panel-strong);
+            border: 1px solid var(--panel-border);
+            padding: 8px 12px;
+            border-radius: 8px;
+            color: var(--text-primary);
+            min-width: 200px;
+        }
+
+        .setting-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .setting-checkbox input {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--primary);
+        }
+
+        .reports-panel {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            padding: 16px 20px;
+        }
+
+        .reports-actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        /* Footer */
+        .footer {
+            background: var(--panel-strong);
+            padding: 30px 40px;
+            margin-top: 40px;
+            border-top: 1px solid var(--panel-border);
+        }
+
+        .footer-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .footer-left p {
+            color: var(--text-secondary);
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 25px;
+        }
+
+        .footer-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .footer-links a:hover {
+            color: var(--text-primary);
+        }
+
+        /* Processing Overlay */
+        .processing-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(2, 6, 23, 0.85);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .processing-overlay.active {
+            display: flex;
+        }
+
+        .processing-content {
+            text-align: center;
+        }
+
+        .processing-spinner {
+            width: 80px;
+            height: 80px;
+            border: 4px solid rgba(148, 163, 184, 0.3);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 30px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .processing-content h3 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+        }
+
+        .processing-content p {
+            color: var(--text-secondary);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .input-options {
+                grid-template-columns: 1fr;
+            }
+
+            .preview-content {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .settings-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .quick-steps {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .nav-links {
+                gap: 15px;
+            }
+
+            .hero h1 {
+                font-size: 2rem;
+            }
+
+            .main-container {
+                padding: 20px;
+            }
+
+            .input-section,
+            .preview-section,
+            .settings-section {
+                padding: 25px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .control-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+            }
+
+            .footer-content {
+                flex-direction: column;
+                gap: 20px;
+                text-align: center;
+            }
+
+            .heatmap-legend {
+                flex-direction: column;
+            }
+        }
+
+        /* Notification Toast */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--panel-strong);
+            padding: 20px 30px;
+            border-radius: 15px;
+            border: 1px solid var(--panel-border);
+            box-shadow: var(--shadow-soft);
+            display: none;
+            align-items: center;
+            gap: 15px;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+
+        .toast.active {
+            display: flex;
+        }
+
+        .toast.success {
+            border-color: var(--success);
+        }
+
+        .toast.error {
+            border-color: var(--secondary);
+        }
+
+        .toast.warning {
+            border-color: var(--orange);
+        }
+
+        .alerts-panel {
+            margin-top: 20px;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            padding: 16px 20px;
+        }
+
+        .alerts-panel h4 {
+            font-size: 1.05rem;
+            margin-bottom: 10px;
+            color: var(--orange);
+        }
+
+        .alerts-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .alert-item {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: var(--bg-soft);
+            border: 1px solid var(--panel-border);
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .alert-item strong {
+            color: var(--text-primary);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .toast-icon {
+            font-size: 1.5rem;
+        }
+
+        .toast-message {
+            color: var(--text-primary);
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-animation"></div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <div class="logo-icon">🏪</div>
+                <div class="logo-text">
+                    <h1>Retail Analytics</h1>
+                    <span>Motion Tracking & Heatmap</span>
+                </div>
+            </div>
+            <nav class="nav-links">
+                <a href="#input">Input</a>
+                <a href="#previewSection">Preview</a>
+                <a href="#settings">Settings</a>
+            </nav>
+            <div class="header-actions">
+                <span class="role-badge" id="roleBadge">Role</span>
+                <button class="theme-toggle" id="themeToggle" type="button">Light</button>
+                <div class="status-badge">
+                    <div class="status-dot"></div>
+                    <span id="headerStatusText">System Ready</span>
+                </div>
+                <a class="theme-toggle" href="/logout">Logout</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-container">
+        <!-- Hero Section -->
+        <section class="hero">
+            <h1>Real-Time Customer Intelligence</h1>
+            <p>Upload a video or use your webcam to detect, track customers, and generate floor traffic heatmaps using AI-powered computer vision.</p>
+
+            <div class="quick-steps">
+                <div class="quick-step-card">
+                    <div class="quick-step-title"><span>1</span>Choose a source</div>
+                    <p>Select Live Camera for in-store tracking or upload a recorded video for analysis.</p>
+                </div>
+                <div class="quick-step-card">
+                    <div class="quick-step-title"><span>2</span>Pick a mode</div>
+                    <p>Use Tracking for IDs and counts, or Heatmap to visualize floor traffic density.</p>
+                </div>
+                <div class="quick-step-card">
+                    <div class="quick-step-title"><span>3</span>Start analysis</div>
+                    <p>Press Start to begin streaming and watch stats update in real time.</p>
+                </div>
+            </div>
+            
+            <!-- <div class="tech-badges">
+                <div class="tech-badge"><span>🔮</span> YOLOv11/YOLOv8</div>
+                <div class="tech-badge"><span>🎯</span> ByteTrack</div>
+                <div class="tech-badge"><span>📹</span> OpenCV</div>
+                <div class="tech-badge"><span>🔢</span> NumPy</div>
+                <div class="tech-badge"><span>🐍</span> Python</div>
+            </div> -->
+        </section>
+
+        <!-- Video Input Section -->
+        <section id="input" class="input-section">
+            <h3>🎥 Select Video Source</h3>
+            <p>Choose how you want to provide video input for analysis</p>
+
+            <div class="input-options">
+                <div class="input-option" id="webcamOption" onclick="selectInputOption('webcam')">
+                    <div class="input-option-icon">📷</div>
+                    <h4>Live Camera</h4>
+                    <p>Use your CCTV camera for real-time detection and tracking</p>
+                </div>
+                <div class="input-option" id="videoOption" onclick="selectInputOption('video')">
+                    <div class="input-option-icon">🎬</div>
+                    <h4>Upload Video</h4>
+                    <p>Upload a recorded video file for analysis</p>
+                </div>
+            </div>
+
+            <div class="camera-select">
+                <label for="cameraSelect">Camera Source</label>
+                <select class="setting-select" id="cameraSelect">
+                    <option value="0" selected>Camera 0 (Default)</option>
+                    <option value="1">Camera 1</option>
+                    <option value="2">Camera 2</option>
+                </select>
+            </div>
+
+            <!-- File Upload Area -->
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+                    <div class="upload-dropzone-icon">📁</div>
+                    <h4>Drag & Drop Video File</h4>
+                    <p>or click to browse</p>
+                    <span class="supported-formats">Supported: .mp4, .avi, .mov, .mkv, .wmv, .flv</span>
+                </div>
+                <input type="file" class="file-input" id="fileInput" accept=".mp4,.avi,.mov,.mkv,.wmv,.flv" onchange="handleFileSelect(event)">
+                
+                <div class="selected-file" id="selectedFile">
+                    <div class="file-info">
+                        <div class="file-info-icon">🎬</div>
+                        <div class="file-info-text">
+                            <h5 id="fileName">video.mp4</h5>
+                            <p id="fileSize">10.5 MB</p>
+                        </div>
+                    </div>
+                    <button class="remove-file" onclick="removeFile()">✕ Remove</button>
+                </div>
+            </div>
+
+            <!-- Camera Preview Area -->
+            <div class="camera-area" id="cameraArea">
+                <div class="camera-preview">
+                    <div class="camera-placeholder" id="cameraPlaceholder">
+                        <div class="camera-placeholder-icon">📷</div>
+                        <p>Camera preview will appear here</p>
+                        <button class="btn btn-primary" onclick="startCamera()">🎥 Start Camera</button>
+                    </div>
+                    <video id="cameraFeed" autoplay playsinline style="display: none;"></video>
+                </div>
+            </div>
+        </section>
+
+        <!-- Preview Section -->
+        <section id="previewSection" class="preview-section">
+            <div class="preview-header">
+                <h3>📺 Video Preview & Controls</h3>
+            </div>
+
+            <div class="preview-content">
+                <div class="video-container">
+                    <img class="video-display" id="videoStream" src="" style="display: none;" />
+                    <video class="video-display" id="videoPreview" controls style="display: none;"></video>
+                    <div class="camera-placeholder" id="streamPlaceholder" style="width: 100%; margin: 0;">
+                        <div class="camera-placeholder-icon">📹</div>
+                        <p>Live stream will appear here</p>
+                    </div>
+                    <canvas id="zoneCanvas" class="zone-canvas"></canvas>
+                    <div class="video-overlay">
+                        <div class="overlay-badge" id="modeBadge">
+                            <span>🎯</span> Tracking Mode
+                        </div>
+                        <div class="overlay-badge" id="statusBadge">
+                            <span>⏸️</span> Ready
+                        </div>
+                    </div>
+                </div>
+
+                <div class="preview-controls">
+                    <!-- Mode Selection -->
+                    <div class="mode-selection">
+                        <h4>📊 Analysis Mode</h4>
+                        <div class="mode-options">
+                            <label class="mode-option active" onclick="selectMode('tracking')">
+                                <input type="radio" name="mode" value="tracking" checked>
+                                <div class="mode-radio"></div>
+                                <div class="mode-info">
+                                    <h5>🎯 Customer Tracking</h5>
+                                    <p>Track individual customers with unique IDs</p>
+                                </div>
+                            </label>
+                            <label class="mode-option" onclick="selectMode('heatmap')">
+                                <input type="radio" name="mode" value="heatmap">
+                                <div class="mode-radio"></div>
+                                <div class="mode-info">
+                                    <h5>🔥 Floor Heatmap</h5>
+                                    <p>Generate traffic density visualization</p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="zone-editor">
+                        <h4>🧭 Zone Editor</h4>
+                        <p style="color: var(--text-muted); font-size: 0.85rem;">Draw rectangles over the live stream.</p>
+                        <div class="zone-editor-actions">
+                            <button class="btn btn-secondary" type="button" id="editQueueZone">✏️ Edit Queue Zone</button>
+                            <button class="btn btn-secondary" type="button" id="editRestrictedZone">✏️ Edit Restricted Zone</button>
+                            <button class="btn btn-secondary" type="button" id="clearZones">🧹 Clear Zones</button>
+                        </div>
+                    </div>
+
+                    <!-- Keyboard Controls -->
+                    <div class="keyboard-controls">
+                        <h4>⌨️ Keyboard Controls</h4>
+                        <div class="control-grid">
+                            <div class="control-item">
+                                <span class="control-key">Q</span>
+                                <span class="control-desc">Quit</span>
+                            </div>
+                            <div class="control-item">
+                                <span class="control-key">P</span>
+                                <span class="control-desc">Pause</span>
+                            </div>
+                            <div class="control-item">
+                                <span class="control-key">T</span>
+                                <span class="control-desc">Trails</span>
+                            </div>
+                            <div class="control-item">
+                                <span class="control-key">H</span>
+                                <span class="control-desc">Heatmap</span>
+                            </div>
+                            <div class="control-item">
+                                <span class="control-key">S</span>
+                                <span class="control-desc">Save</span>
+                            </div>
+                            <div class="control-item">
+                                <span class="control-key">R</span>
+                                <span class="control-desc">Reset</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" id="startBtn" onclick="startAnalysis()" disabled>
+                            ▶️ Start Analysis
+                        </button>
+                        <button class="btn btn-danger" id="stopBtn" onclick="stopAnalysis()" style="display: none;">
+                            ⏹️ Stop
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stats Section -->
+        <section class="stats-section" id="statsSection">
+            <div class="stats-grid" id="statsGrid">
+                <!-- Stat cards will be loaded here -->
+            </div>
+            <div class="stats-chart-container" id="statsChartContainer" style="margin-top: 20px;">
+                <!-- Chart will be loaded here -->
+            </div>
+            <div class="alerts-panel" id="alertsPanel">
+                <h4>🚨 Live Alerts</h4>
+                <div class="alerts-list" id="alertsList">
+                    <div class="alert-item">No alerts yet.</div>
+                </div>
+            </div>
+            <div class="reports-panel">
+                <div>
+                    <strong>📄 Reports</strong>
+                    <span style="color: var(--text-muted); margin-left: 8px;">Export CSV/PDF</span>
+                </div>
+                <div class="reports-actions">
+                    <select class="setting-select" id="reportRange">
+                        <option value="daily" selected>Daily</option>
+                        <option value="weekly">Weekly</option>
+                    </select>
+                    <button class="btn btn-secondary" id="exportCsvBtn" type="button">⬇️ Export CSV</button>
+                    <button class="btn btn-secondary" id="exportPdfBtn" type="button">⬇️ Export PDF</button>
+                </div>
+            </div>
+            <div class="saved-heatmap" id="savedHeatmap">
+                <h4>🔥 Saved Heatmap Snapshot</h4>
+                <img id="savedHeatmapImage" alt="Saved heatmap" />
+                <div class="heatmap-meta">
+                    <span id="savedHeatmapName"></span>
+                    <span id="savedHeatmapType"></span>
+                </div>
+                <div class="heatmap-actions">
+                    <a id="savedHeatmapDownload" class="heatmap-download" href="" download>⬇️ Download</a>
+                </div>
+            </div>
+        </section>
+
+        <!-- Heatmap Legend -->
+        <div class="heatmap-legend" id="heatmapLegend">
+            <span class="legend-title">🔥 Traffic Density:</span>
+            <div>
+                <div class="legend-bar"></div>
+                <div class="legend-labels">
+                    <span>Low</span>
+                    <span>Medium</span>
+                    <span>High</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Section -->
+        <section id="settings" class="settings-section">
+            <h3>⚙️ Detection Settings</h3>
+
+            <div class="settings-grid">
+                <div class="settings-card">
+                    <h4>🔮 Model Configuration</h4>
+                    <div class="setting-item">
+                        <span class="setting-label">Model</span>
+                        <select class="setting-select" id="modelSelect">
+                            <option value="yolov8l.pt">YOLOv8l (yolov8l.pt)</option>
+                            <option value="yolov8m.pt">YOLOv8m (yolov8m.pt)</option>
+                            <option value="yolov8n.pt">YOLOv8n (yolov8n.pt)</option>
+                            <option value="yolo11l.pt">YOLOv11l (yolo11l.pt)</option>
+                            <option value="yolo11m.pt">YOLOv11m (yolo11m.pt)</option>
+                            <option value="yolo11s.pt" selected>YOLOv11s (yolo11s.pt)</option>
+                            <option value="yolov8s.pt">YOLOv8s (yolov8s.pt)</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Performance Preset</span>
+                        <select class="setting-select" id="presetSelect">
+                            <option value="speed">Speed</option>
+                            <option value="balanced" selected>Balanced</option>
+                            <option value="accuracy">Accuracy</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Confidence Threshold</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="confThreshold" value="0.3" min="0.1" max="1" step="0.05">
+                            <span class="range-value" id="confThresholdValue">0.30</span>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">IOU Threshold</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="iouThreshold" value="0.5" min="0.1" max="1" step="0.05">
+                            <span class="range-value" id="iouThresholdValue">0.50</span>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Image Size</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="imgSize" value="640" min="320" max="1280" step="32">
+                            <span class="range-value" id="imgSizeValue">640</span>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Target FPS</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="targetFps" value="30" min="10" max="60" step="5">
+                            <span class="range-value" id="targetFpsValue">30</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <h4>🔥 Heatmap Configuration</h4>
+                    <div class="setting-item">
+                        <span class="setting-label">Decay Rate</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="heatmapDecay" value="0.985" min="0.9" max="0.999" step="0.005">
+                            <span class="range-value" id="heatmapDecayValue">0.985</span>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Intensity</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="heatmapIntensity" value="25" min="5" max="100" step="5">
+                            <span class="range-value" id="heatmapIntensityValue">25</span>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Opacity</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="heatmapOpacity" value="0.55" min="0.1" max="1" step="0.05">
+                            <span class="range-value" id="heatmapOpacityValue">0.55</span>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Trail Length</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="trailLength" value="30" min="10" max="100" step="5">
+                            <span class="range-value" id="trailLengthValue">30</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <h4>🧾 Queue Detection</h4>
+                    <div class="setting-item">
+                        <span class="setting-label">Enable Queue Detection</span>
+                        <label class="setting-checkbox">
+                            <input type="checkbox" id="queueEnabled" checked>
+                            <span>On</span>
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Queue Zone Width</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="queueZoneWidth" value="0.45" min="0.2" max="0.9" step="0.05">
+                            <span class="range-value" id="queueZoneWidthValue">0.45</span>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Queue Zone Height</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="queueZoneHeight" value="0.35" min="0.1" max="0.7" step="0.05">
+                            <span class="range-value" id="queueZoneHeightValue">0.35</span>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Bottom Offset</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="queueZoneBottomOffset" value="0.02" min="0" max="0.3" step="0.02">
+                            <span class="range-value" id="queueZoneBottomOffsetValue">0.02</span>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Queue Alert Threshold</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="queueThreshold" value="4" min="1" max="20" step="1">
+                            <span class="range-value" id="queueThresholdValue">4</span>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Service Time (sec/person)</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="serviceTimeSec" value="6" min="2" max="20" step="1">
+                            <span class="range-value" id="serviceTimeSecValue">6</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <h4>🚨 Alerts</h4>
+                    <div class="setting-item">
+                        <span class="setting-label">Crowd Alert Threshold</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="crowdThreshold" value="12" min="5" max="50" step="1">
+                            <span class="range-value" id="crowdThresholdValue">12</span>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Alert Cooldown (sec)</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="alertCooldownSec" value="10" min="2" max="60" step="2">
+                            <span class="range-value" id="alertCooldownSecValue">10</span>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Restricted Zone</span>
+                        <label class="setting-checkbox">
+                            <input type="checkbox" id="restrictedEnabled">
+                            <span>On</span>
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Restricted Width</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="restrictedZoneWidth" value="0.3" min="0.1" max="0.8" step="0.05">
+                            <span class="range-value" id="restrictedZoneWidthValue">0.30</span>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Restricted Height</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="restrictedZoneHeight" value="0.2" min="0.1" max="0.6" step="0.05">
+                            <span class="range-value" id="restrictedZoneHeightValue">0.20</span>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <span class="setting-label">Restricted Top Offset</span>
+                        <div class="setting-control">
+                            <input type="range" class="setting-range" id="restrictedZoneTopOffset" value="0.1" min="0" max="0.5" step="0.05">
+                            <span class="range-value" id="restrictedZoneTopOffsetValue">0.10</span>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <!-- <span class="setting-label">Webhook URL</span>
+                        <span class="setting-value">Disabled</span> -->
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-left">
+                <p>🏪 Retail Store Analytics - Powered by YOLOv11 & ByteTrack</p>
+            </div>
+            <div class="footer-links">
+                <a href="#">Documentation</a>
+                <a href="#">GitHub</a>
+                <a href="#">Support</a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Processing Overlay -->
+    <div class="processing-overlay" id="processingOverlay">
+        <div class="processing-content">
+            <div class="processing-spinner"></div>
+            <h3>Processing Video...</h3>
+            <p>Please wait while we analyze the video</p>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+        <span class="toast-icon">✅</span>
+        <span class="toast-message" id="toastMessage">Success!</span>
+    </div>
+
+    <script>
+        // State Management
+        let selectedInput = null;
+        let selectedMode = 'tracking';
+        let videoFile = null;
+        let cameraStream = null;
+        let settingsUpdateTimer = null;
+        let selectedCamera = '0';
+        let currentSourceKey = '0';
+        let editMode = null;
+        let isDrawingZone = false;
+        let zoneStart = null;
+        let zoneCurrent = null;
+        const zoneRects = { queue: null, restricted: null };
+
+        const userRole = "{{ user_role }}";
+        const roleBadge = document.getElementById('roleBadge');
+        if (roleBadge) {
+            roleBadge.textContent = userRole === 'admin' ? 'Admin' : 'Viewer';
+        }
+
+        const themeToggle = document.getElementById('themeToggle');
+        const savedTheme = localStorage.getItem('uiTheme');
+        if (savedTheme === 'light') {
+            document.documentElement.setAttribute('data-theme', 'light');
+        } else {
+            document.documentElement.removeAttribute('data-theme');
+        }
+
+        function updateThemeLabel() {
+            const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+            if (themeToggle) {
+                themeToggle.textContent = isLight ? 'Dark' : 'Light';
+            }
+        }
+
+        if (themeToggle) {
+            themeToggle.addEventListener('click', () => {
+                const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+                const nextTheme = isLight ? 'dark' : 'light';
+                if (nextTheme === 'dark') {
+                    document.documentElement.removeAttribute('data-theme');
+                } else {
+                    document.documentElement.setAttribute('data-theme', 'light');
+                }
+                localStorage.setItem('uiTheme', nextTheme);
+                updateThemeLabel();
+            });
+        }
+
+        updateThemeLabel();
+
+        if (userRole !== 'admin') {
+            const settingsSection = document.getElementById('settings');
+            if (settingsSection) {
+                settingsSection.style.display = 'none';
+            }
+            const zoneEditor = document.querySelector('.zone-editor');
+            if (zoneEditor) {
+                zoneEditor.style.display = 'none';
+            }
+        }
+
+        loadZonesForCamera(currentSourceKey);
+
+        const settingBindings = [
+            { inputId: 'confThreshold', valueId: 'confThresholdValue', format: (val) => Number(val).toFixed(2) },
+            { inputId: 'iouThreshold', valueId: 'iouThresholdValue', format: (val) => Number(val).toFixed(2) },
+            { inputId: 'imgSize', valueId: 'imgSizeValue', format: (val) => Number(val).toString() },
+            { inputId: 'targetFps', valueId: 'targetFpsValue', format: (val) => Number(val).toString() },
+            { inputId: 'heatmapDecay', valueId: 'heatmapDecayValue', format: (val) => Number(val).toFixed(3) },
+            { inputId: 'heatmapIntensity', valueId: 'heatmapIntensityValue', format: (val) => Number(val).toString() },
+            { inputId: 'heatmapOpacity', valueId: 'heatmapOpacityValue', format: (val) => Number(val).toFixed(2) },
+            { inputId: 'trailLength', valueId: 'trailLengthValue', format: (val) => Number(val).toString() },
+            { inputId: 'queueZoneWidth', valueId: 'queueZoneWidthValue', format: (val) => Number(val).toFixed(2) },
+            { inputId: 'queueZoneHeight', valueId: 'queueZoneHeightValue', format: (val) => Number(val).toFixed(2) },
+            { inputId: 'queueZoneBottomOffset', valueId: 'queueZoneBottomOffsetValue', format: (val) => Number(val).toFixed(2) },
+            { inputId: 'queueThreshold', valueId: 'queueThresholdValue', format: (val) => Number(val).toString() },
+            { inputId: 'serviceTimeSec', valueId: 'serviceTimeSecValue', format: (val) => Number(val).toString() },
+            { inputId: 'crowdThreshold', valueId: 'crowdThresholdValue', format: (val) => Number(val).toString() },
+            { inputId: 'alertCooldownSec', valueId: 'alertCooldownSecValue', format: (val) => Number(val).toString() },
+            { inputId: 'restrictedZoneWidth', valueId: 'restrictedZoneWidthValue', format: (val) => Number(val).toFixed(2) },
+            { inputId: 'restrictedZoneHeight', valueId: 'restrictedZoneHeightValue', format: (val) => Number(val).toFixed(2) },
+            { inputId: 'restrictedZoneTopOffset', valueId: 'restrictedZoneTopOffsetValue', format: (val) => Number(val).toFixed(2) }
+        ];
+
+        const presetProfiles = {
+            speed: {
+                confThreshold: 0.35,
+                iouThreshold: 0.45,
+                imgSize: 512,
+                targetFps: 40,
+                heatmapDecay: 0.98,
+                heatmapIntensity: 18,
+                heatmapOpacity: 0.5,
+                trailLength: 20
+            },
+            balanced: {
+                confThreshold: 0.3,
+                iouThreshold: 0.5,
+                imgSize: 640,
+                targetFps: 30,
+                heatmapDecay: 0.985,
+                heatmapIntensity: 25,
+                heatmapOpacity: 0.55,
+                trailLength: 30
+            },
+            accuracy: {
+                confThreshold: 0.25,
+                iouThreshold: 0.55,
+                imgSize: 896,
+                targetFps: 25,
+                heatmapDecay: 0.99,
+                heatmapIntensity: 30,
+                heatmapOpacity: 0.6,
+                trailLength: 40
+            }
+        };
+
+        function loadZonesForCamera(sourceKey) {
+            const raw = localStorage.getItem(`zones_${sourceKey}`);
+            if (!raw) {
+                zoneRects.queue = null;
+                zoneRects.restricted = null;
+                return;
+            }
+            try {
+                const parsed = JSON.parse(raw);
+                zoneRects.queue = parsed.queue || null;
+                zoneRects.restricted = parsed.restricted || null;
+            } catch (error) {
+                zoneRects.queue = null;
+                zoneRects.restricted = null;
+            }
+        }
+
+        function saveZonesForCamera(sourceKey) {
+            const payload = {
+                queue: zoneRects.queue,
+                restricted: zoneRects.restricted
+            };
+            localStorage.setItem(`zones_${sourceKey}`, JSON.stringify(payload));
+        }
+
+        function updateSourceKey() {
+            if (selectedInput === 'video' && videoFile) {
+                currentSourceKey = videoFile.name;
+                return;
+            }
+            currentSourceKey = selectedCamera;
+        }
+
+        function readSettings() {
+            return {
+                model: document.getElementById('modelSelect').value,
+                confidence: parseFloat(document.getElementById('confThreshold').value),
+                iou: parseFloat(document.getElementById('iouThreshold').value),
+                imgSize: parseInt(document.getElementById('imgSize').value, 10),
+                targetFps: parseInt(document.getElementById('targetFps').value, 10),
+                heatmapDecay: parseFloat(document.getElementById('heatmapDecay').value),
+                heatmapIntensity: parseInt(document.getElementById('heatmapIntensity').value, 10),
+                heatmapOpacity: parseFloat(document.getElementById('heatmapOpacity').value),
+                trailLength: parseInt(document.getElementById('trailLength').value, 10),
+                queueEnabled: document.getElementById('queueEnabled').checked,
+                queueZoneWidth: parseFloat(document.getElementById('queueZoneWidth').value),
+                queueZoneHeight: parseFloat(document.getElementById('queueZoneHeight').value),
+                queueZoneBottomOffset: parseFloat(document.getElementById('queueZoneBottomOffset').value),
+                queueThreshold: parseInt(document.getElementById('queueThreshold').value, 10),
+                serviceTimeSec: parseFloat(document.getElementById('serviceTimeSec').value),
+                crowdThreshold: parseInt(document.getElementById('crowdThreshold').value, 10),
+                alertCooldownSec: parseInt(document.getElementById('alertCooldownSec').value, 10),
+                restrictedEnabled: document.getElementById('restrictedEnabled').checked,
+                restrictedZoneWidth: parseFloat(document.getElementById('restrictedZoneWidth').value),
+                restrictedZoneHeight: parseFloat(document.getElementById('restrictedZoneHeight').value),
+                restrictedZoneTopOffset: parseFloat(document.getElementById('restrictedZoneTopOffset').value),
+                queueZoneRect: zoneRects.queue,
+                restrictedZoneRect: zoneRects.restricted
+            };
+        }
+
+        function syncSettingValue(binding) {
+            const input = document.getElementById(binding.inputId);
+            const value = document.getElementById(binding.valueId);
+            if (!input || !value) {
+                return;
+            }
+            value.textContent = binding.format(input.value);
+        }
+
+        function scheduleSettingsUpdate(delayMs = 300) {
+            if (userRole !== 'admin') {
+                return;
+            }
+            if (settingsUpdateTimer) {
+                clearTimeout(settingsUpdateTimer);
+            }
+            settingsUpdateTimer = setTimeout(() => {
+                const payload = readSettings();
+                fetch('/update_settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }).catch(error => console.error('Settings update failed:', error));
+            }, delayMs);
+        }
+
+        function applyPreset(presetKey) {
+            const preset = presetProfiles[presetKey];
+            if (!preset) {
+                return;
+            }
+
+            Object.keys(preset).forEach((key) => {
+                const input = document.getElementById(key);
+                if (input) {
+                    input.value = preset[key];
+                }
+            });
+
+            settingBindings.forEach(syncSettingValue);
+            scheduleSettingsUpdate(0);
+        }
+
+        settingBindings.forEach((binding) => {
+            syncSettingValue(binding);
+            const input = document.getElementById(binding.inputId);
+            if (input) {
+                input.addEventListener('input', () => {
+                    syncSettingValue(binding);
+                    scheduleSettingsUpdate();
+                });
+                input.addEventListener('change', scheduleSettingsUpdate);
+            }
+        });
+
+        const modelSelect = document.getElementById('modelSelect');
+        if (modelSelect) {
+            modelSelect.addEventListener('change', () => scheduleSettingsUpdate(0));
+        }
+
+        const presetSelect = document.getElementById('presetSelect');
+        if (presetSelect) {
+            presetSelect.addEventListener('change', (event) => {
+                applyPreset(event.target.value);
+            });
+        }
+
+        const cameraSelect = document.getElementById('cameraSelect');
+        if (cameraSelect) {
+            cameraSelect.addEventListener('change', (event) => {
+                selectedCamera = event.target.value;
+                updateSourceKey();
+                loadZonesForCamera(currentSourceKey);
+                scheduleSettingsUpdate(0);
+
+                if (selectedInput === 'webcam' && document.getElementById('videoStream').style.display === 'block') {
+                    setStreamStatus('connecting');
+                    document.getElementById('videoStream').src = `/video_feed?source=${encodeURIComponent(selectedCamera)}&mode=${selectedMode}`;
+                }
+            });
+        }
+
+        const queueEnabled = document.getElementById('queueEnabled');
+        if (queueEnabled) {
+            queueEnabled.addEventListener('change', () => scheduleSettingsUpdate(0));
+        }
+
+        const restrictedEnabled = document.getElementById('restrictedEnabled');
+        if (restrictedEnabled) {
+            restrictedEnabled.addEventListener('change', () => scheduleSettingsUpdate(0));
+        }
+
+
+
+        const zoneCanvas = document.getElementById('zoneCanvas');
+        const videoContainer = document.querySelector('.video-container');
+
+        function resizeZoneCanvas() {
+            if (!zoneCanvas || !videoContainer) {
+                return;
+            }
+            zoneCanvas.width = videoContainer.clientWidth - 30;
+            zoneCanvas.height = videoContainer.clientHeight - 30;
+        }
+
+        function getCanvasPos(event) {
+            const rect = zoneCanvas.getBoundingClientRect();
+            return {
+                x: event.clientX - rect.left,
+                y: event.clientY - rect.top
+            };
+        }
+
+        function normalizeRect(a, b, width, height) {
+            const x1 = Math.min(a.x, b.x) / width;
+            const y1 = Math.min(a.y, b.y) / height;
+            const x2 = Math.max(a.x, b.x) / width;
+            const y2 = Math.max(a.y, b.y) / height;
+            if (x2 - x1 < 0.02 || y2 - y1 < 0.02) {
+                return null;
+            }
+            return { x1, y1, x2, y2 };
+        }
+
+        function drawZones() {
+            if (!zoneCanvas) {
+                return;
+            }
+            const ctx = zoneCanvas.getContext('2d');
+            ctx.clearRect(0, 0, zoneCanvas.width, zoneCanvas.height);
+
+            const drawRect = (rect, color, label) => {
+                if (!rect) {
+                    return;
+                }
+                const x = rect.x1 * zoneCanvas.width;
+                const y = rect.y1 * zoneCanvas.height;
+                const w = (rect.x2 - rect.x1) * zoneCanvas.width;
+                const h = (rect.y2 - rect.y1) * zoneCanvas.height;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x, y, w, h);
+                ctx.fillStyle = color;
+                ctx.font = '12px Work Sans, sans-serif';
+                ctx.fillText(label, x + 6, Math.max(14, y - 6));
+            };
+
+            drawRect(zoneRects.queue, 'rgba(34, 211, 238, 0.9)', 'Queue Zone');
+            drawRect(zoneRects.restricted, 'rgba(239, 68, 68, 0.9)', 'Restricted Zone');
+
+            if (isDrawingZone && zoneStart && zoneCurrent) {
+                const draft = normalizeRect(zoneStart, zoneCurrent, zoneCanvas.width, zoneCanvas.height);
+                if (draft) {
+                    drawRect(draft, 'rgba(250, 204, 21, 0.9)', 'Editing');
+                }
+            }
+
+            requestAnimationFrame(drawZones);
+        }
+
+        function setEditMode(mode) {
+            editMode = mode;
+            isDrawingZone = false;
+            zoneStart = null;
+            zoneCurrent = null;
+            if (zoneCanvas) {
+                zoneCanvas.style.pointerEvents = mode ? 'auto' : 'none';
+                zoneCanvas.style.cursor = mode ? 'crosshair' : 'default';
+            }
+            if (mode) {
+                showToast(`🧭 Draw the ${mode} zone`, 'warning');
+            }
+        }
+
+        if (zoneCanvas) {
+            resizeZoneCanvas();
+            window.addEventListener('resize', resizeZoneCanvas);
+
+            zoneCanvas.addEventListener('mousedown', (event) => {
+                if (!editMode) {
+                    return;
+                }
+                isDrawingZone = true;
+                zoneStart = getCanvasPos(event);
+                zoneCurrent = zoneStart;
+            });
+
+            zoneCanvas.addEventListener('mousemove', (event) => {
+                if (!isDrawingZone) {
+                    return;
+                }
+                zoneCurrent = getCanvasPos(event);
+            });
+
+            zoneCanvas.addEventListener('mouseup', (event) => {
+                if (!isDrawingZone) {
+                    return;
+                }
+                zoneCurrent = getCanvasPos(event);
+                const rect = normalizeRect(zoneStart, zoneCurrent, zoneCanvas.width, zoneCanvas.height);
+                if (rect) {
+                    zoneRects[editMode] = rect;
+                    saveZonesForCamera(currentSourceKey);
+                    scheduleSettingsUpdate(0);
+                    showToast(`✅ ${editMode} zone saved`, 'success');
+                }
+                setEditMode(null);
+            });
+        }
+
+        drawZones();
+
+        const editQueueZone = document.getElementById('editQueueZone');
+        if (editQueueZone) {
+            editQueueZone.addEventListener('click', () => setEditMode('queue'));
+        }
+
+        const editRestrictedZone = document.getElementById('editRestrictedZone');
+        if (editRestrictedZone) {
+            editRestrictedZone.addEventListener('click', () => setEditMode('restricted'));
+        }
+
+        const clearZones = document.getElementById('clearZones');
+        if (clearZones) {
+            clearZones.addEventListener('click', () => {
+                zoneRects.queue = null;
+                zoneRects.restricted = null;
+                saveZonesForCamera(currentSourceKey);
+                scheduleSettingsUpdate(0);
+                showToast('🧹 Zones cleared', 'success');
+            });
+        }
+
+        // Input Option Selection
+        function selectInputOption(option) {
+            selectedInput = option;
+            
+            // Update UI
+            document.getElementById('webcamOption').classList.remove('active');
+            document.getElementById('videoOption').classList.remove('active');
+            document.getElementById(option + 'Option').classList.add('active');
+            
+            // Show/Hide appropriate areas
+            document.getElementById('uploadArea').classList.remove('active');
+            document.getElementById('cameraArea').classList.remove('active');
+            
+            if (option === 'webcam') {
+                document.getElementById('cameraArea').classList.add('active');
+                stopCamera(); // Reset camera if switching
+            } else {
+                document.getElementById('uploadArea').classList.add('active');
+            }
+
+            updateSourceKey();
+            loadZonesForCamera(currentSourceKey);
+            
+            updateStartButton();
+        }
+
+        // File Handling
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                videoFile = file;
+                updateSourceKey();
+                loadZonesForCamera(currentSourceKey);
+                document.getElementById('fileName').textContent = file.name;
+                document.getElementById('fileSize').textContent = formatFileSize(file.size);
+                document.getElementById('selectedFile').classList.add('active');
+                
+                // Show preview section and load video
+                document.querySelector('.preview-section').classList.add('active');
+                const videoPreview = document.getElementById('videoPreview');
+                videoPreview.src = URL.createObjectURL(file);
+                
+                showToast('✅ Video loaded successfully!', 'success');
+                updateStartButton();
+            }
+        }
+
+        function removeFile() {
+            videoFile = null;
+            document.getElementById('fileInput').value = '';
+            document.getElementById('selectedFile').classList.remove('active');
+            document.querySelector('.preview-section').classList.remove('active');
+            updateSourceKey();
+            loadZonesForCamera(currentSourceKey);
+            updateStartButton();
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Drag and Drop
+        const dropzone = document.getElementById('dropzone');
+        
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('dragover');
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                const file = files[0];
+                const validExtensions = ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv'];
+                const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+                
+                if (validExtensions.includes(ext)) {
+                    document.getElementById('fileInput').files = files;
+                    handleFileSelect({ target: { files: files } });
+                } else {
+                    showToast('❌ Invalid file format!', 'error');
+                }
+            }
+        });
+
+        // Camera Functions
+        async function startCamera() {
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 1280, height: 720 } 
+                });
+                
+                const cameraFeed = document.getElementById('cameraFeed');
+                cameraFeed.srcObject = cameraStream;
+                cameraFeed.style.display = 'block';
+                document.getElementById('cameraPlaceholder').style.display = 'none';
+                
+                // Show preview section
+                document.querySelector('.preview-section').classList.add('active');
+                
+                showToast('📷 Camera started!', 'success');
+                updateStartButton();
+            } catch (error) {
+                showToast('❌ Could not access camera!', 'error');
+                console.error('Camera error:', error);
+            }
+        }
+
+        function stopCamera() {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+            document.getElementById('cameraFeed').style.display = 'none';
+            document.getElementById('cameraPlaceholder').style.display = 'flex';
+        }
+
+        // Mode Selection
+        function selectMode(mode) {
+            selectedMode = mode;
+            
+            document.querySelectorAll('.mode-option').forEach(opt => {
+                opt.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+            
+            // Update badge
+            const modeTexts = {
+                'tracking': '🎯 Tracking Mode',
+                'heatmap': '🔥 Heatmap Mode'
+            };
+            
+            if (modeTexts[mode]) {
+                document.getElementById('modeBadge').innerHTML = `<span>${modeTexts[mode].split(' ')[0]}</span> ${modeTexts[mode].split(' ').slice(1).join(' ')}`;
+            }
+            
+            // Show/hide heatmap legend
+            document.getElementById('heatmapLegend').classList.toggle('active', mode === 'heatmap');
+            
+            // If already streaming, switch mode
+            if (document.getElementById('videoStream').style.display === 'block') {
+                fetch(`/switch_mode/${mode}`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        // Restart the stream with new mode
+                        setStreamStatus('connecting');
+                        document.getElementById('videoStream').src = '';
+                        setTimeout(() => {
+                            let source = '0';
+                            if (selectedInput === 'video' && videoFile) {
+                                source = videoFile.name;
+                            }
+                            document.getElementById('videoStream').src = `/video_feed?source=${encodeURIComponent(source)}&mode=${selectedMode}`;
+                        }, 100);
+                    })
+                    .catch(error => console.error('Error switching mode:', error));
+            }
+        }
+
+        function setStreamStatus(state) {
+            const statusBadge = document.getElementById('statusBadge');
+            const headerStatusText = document.getElementById('headerStatusText');
+
+            if (!statusBadge || !headerStatusText) {
+                return;
+            }
+
+            const map = {
+                ready: { icon: '⏸️', label: 'Ready', header: 'System Ready' },
+                connecting: { icon: '⏳', label: 'Connecting', header: 'Connecting' },
+                live: { icon: '✅', label: 'Live', header: 'Streaming Live' },
+                stopped: { icon: '🛑', label: 'Stopped', header: 'Stopped' },
+                error: { icon: '⚠️', label: 'Error', header: 'Stream Error' }
+            };
+
+            const payload = map[state] || map.ready;
+            statusBadge.innerHTML = `<span>${payload.icon}</span> ${payload.label}`;
+            headerStatusText.textContent = payload.header;
+        }
+
+        // Analysis Functions
+        function startAnalysis() {
+            if (!selectedInput) {
+                showToast('❌ Please select an input source', 'error');
+                return;
+            }
+
+            scheduleSettingsUpdate(0);
+            updateSourceKey();
+
+            // Determine video source
+            let source = '0';  // Default webcam
+            if (selectedInput === 'video' && videoFile) {
+                source = videoFile.name;
+            } else if (selectedInput === 'webcam') {
+                source = selectedCamera;
+            }
+
+            if (selectedInput === 'webcam') {
+                stopCamera();
+            }
+
+            resizeZoneCanvas();
+
+            // Show processing overlay
+            document.getElementById('processingOverlay').classList.add('active');
+            document.getElementById('statsSection').classList.add('active');
+            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('stopBtn').style.display = 'flex';
+            document.getElementById('streamPlaceholder').style.display = 'none';
+
+            // Start streaming video
+            const videoStream = document.getElementById('videoStream');
+            videoStream.style.display = 'block';
+            videoStream.src = `/video_feed?source=${encodeURIComponent(source)}&mode=${selectedMode}`;
+
+            analysisStartTime = Date.now();
+            setStreamStatus('connecting');
+            console.log('Stream starting...', { source, mode: selectedMode });
+            startStatsPolling();
+
+            // Remove processing overlay after a moment
+            setTimeout(() => {
+                document.getElementById('processingOverlay').classList.remove('active');
+                showToast(`✅ ${selectedMode === 'tracking' ? 'Tracking' : 'Heatmap'} started!`, 'success');
+            }, 500);
+        }
+
+        function stopAnalysis() {
+            fetch('/stop', { method: 'POST' })
+                .then(() => {
+                    showToast('Processing stopped.');
+                    const videoStream = document.getElementById('videoStream');
+                    videoStream.src = "";
+                    videoStream.style.display = 'none';
+                    document.getElementById('streamPlaceholder').style.display = 'flex';
+                    document.getElementById('previewSection').classList.remove('active');
+                    document.getElementById('startBtn').style.display = 'flex';
+                    document.getElementById('stopBtn').style.display = 'none';
+                    document.getElementById('input').scrollIntoView({ behavior: 'smooth' });
+                    stopCamera();
+                    setStreamStatus('stopped');
+                    console.log('Stream stopped.');
+                    stopStatsPolling();
+                    
+                    // Fetch and display stats after stopping
+                    fetchAndDisplayStats();
+                    fetchAndDisplayHeatmap();
+                })
+                .catch(err => {
+                    console.error("Error stopping analysis:", err);
+                    showToast('Could not stop processing.', 'error');
+                    setStreamStatus('error');
+                    stopStatsPolling();
+                });
+        }
+
+        // UI Helpers
+        function updateStartButton() {
+            const startBtn = document.getElementById('startBtn');
+            const canStart = (selectedInput === 'video' && videoFile) || 
+                           (selectedInput === 'webcam');
+            startBtn.disabled = !canStart;
+        }
+
+        const videoStreamEl = document.getElementById('videoStream');
+        if (videoStreamEl) {
+            videoStreamEl.addEventListener('load', () => {
+                setStreamStatus('live');
+                console.log('Stream connected.');
+            });
+            videoStreamEl.addEventListener('loadstart', () => {
+                setStreamStatus('connecting');
+                console.log('Stream connecting.');
+            });
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            
+            toast.classList.remove('success', 'error', 'warning');
+            toast.classList.add(type, 'active');
+            toastMessage.textContent = message;
+            
+            setTimeout(() => {
+                toast.classList.remove('active');
+            }, 3000);
+        }
+
+        // Smooth scrolling for nav links
+        document.querySelectorAll('.nav-links a').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const target = document.querySelector(link.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        });
+
+        // Analytics
+        let lastAnalysisData = {
+            frameCount: 0,
+            totalDetections: 0,
+            uniqueCustomers: 0,
+            duration: 0
+        };
+
+        let analysisStartTime = null;
+        let statsIntervalId = null;
+        let lastAlertId = 0;
+
+        // ... other state variables
+
+        function startStatsPolling() {
+            stopStatsPolling();
+            fetchAndDisplayStats();
+            statsIntervalId = setInterval(fetchAndDisplayStats, 2000);
+        }
+
+        function stopStatsPolling() {
+            if (statsIntervalId) {
+                clearInterval(statsIntervalId);
+                statsIntervalId = null;
+            }
+        }
+
+        async function fetchAndDisplayStats() {
+            const statsSection = document.getElementById('statsSection');
+            const statsGrid = document.getElementById('statsGrid');
+            const statsChartContainer = document.getElementById('statsChartContainer');
+            const alertsList = document.getElementById('alertsList');
+            
+            if (!statsGrid || !statsChartContainer) {
+                console.error("Stats containers not found!");
+                return;
+            }
+
+            try {
+                const response = await fetch(`/get_stats?source=${encodeURIComponent(currentSourceKey)}`);
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    // Display chart
+                    if (data.image) {
+                        statsChartContainer.innerHTML = `<img src="data:image/png;base64,${data.image}" alt="Analytics Chart" style="width: 100%; border-radius: 12px;">`;
+                    }
+
+                    // Display stat cards
+                    if (data.stats) {
+                        const stats = data.stats;
+                        statsGrid.innerHTML = `
+                            <div class="stat-card">
+                                <div class="stat-icon">⏱️</div>
+                                <div class="stat-value">${stats.duration}s</div>
+                                <div class="stat-label">Duration</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">👥</div>
+                                <div class="stat-value">${stats.uniqueCustomers}</div>
+                                <div class="stat-label">Unique Customers</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">🎯</div>
+                                <div class="stat-value">${stats.totalDetections}</div>
+                                <div class="stat-label">Total Detections</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">⚡</div>
+                                <div class="stat-value">${stats.fps}</div>
+                                <div class="stat-label">FPS</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">👁️</div>
+                                <div class="stat-value">${stats.activeDetections}</div>
+                                <div class="stat-label">Active Detections</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">🖼️</div>
+                                <div class="stat-value">${stats.frameCount}</div>
+                                <div class="stat-label">Frames Processed</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">🧾</div>
+                                <div class="stat-value">${stats.queueLength}</div>
+                                <div class="stat-label">Queue Length</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">⏳</div>
+                                <div class="stat-value">${stats.queueWaitSeconds}s</div>
+                                <div class="stat-label">Est. Wait</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">🚦</div>
+                                <div class="stat-value">${stats.crowdLevel}</div>
+                                <div class="stat-label">Crowd Level</div>
+                            </div>
+                        `;
+                    }
+
+                    if (data.alerts && data.alerts.length) {
+                        data.alerts.forEach((alert) => {
+                            if (alert.id > lastAlertId) {
+                                const type = alert.level === 'error' ? 'error' : 'warning';
+                                showToast(`⚠️ ${alert.message}`, type);
+                                lastAlertId = alert.id;
+                            }
+                        });
+
+                        if (alertsList) {
+                            alertsList.innerHTML = data.alerts.slice().reverse().map((alert) => {
+                                const label = alert.level === 'error' ? 'Error' : 'Alert';
+                                const timeLabel = new Date(alert.ts * 1000).toLocaleTimeString();
+                                return `
+                                    <div class="alert-item">
+                                        <strong>${label}:</strong>
+                                        <span>${alert.message}</span>
+                                        <span>${timeLabel}</span>
+                                    </div>
+                                `;
+                            }).join('');
+                        }
+                    } else if (alertsList) {
+                        alertsList.innerHTML = '<div class="alert-item">No alerts yet.</div>';
+                    }
+                    
+                    statsSection.classList.add('active');
+                } else {
+                    showToast(data.message || 'Could not load stats.', 'error');
+                }
+            } catch (error) {
+                console.error('Error fetching stats:', error);
+                showToast('Failed to fetch analytics.', 'error');
+            }
+        }
+
+        async function fetchAndDisplayHeatmap(options = {}) {
+            const { retries = 6, delayMs = 750 } = options;
+            const heatmapSection = document.getElementById('savedHeatmap');
+            const heatmapImage = document.getElementById('savedHeatmapImage');
+            const heatmapName = document.getElementById('savedHeatmapName');
+            const heatmapType = document.getElementById('savedHeatmapType');
+            const heatmapDownload = document.getElementById('savedHeatmapDownload');
+
+            if (!heatmapSection || !heatmapImage || !heatmapName || !heatmapType || !heatmapDownload) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/get_last_heatmap');
+                const data = await response.json();
+
+                if (data.status === 'success' && data.image) {
+                    const imgSrc = `data:image/png;base64,${data.image}`;
+                    heatmapImage.src = imgSrc;
+                    heatmapName.textContent = data.filename || 'Saved heatmap';
+                    heatmapType.textContent = data.type === 'overlay' ? 'Overlay view' : 'Heatmap only';
+                    heatmapDownload.href = imgSrc;
+                    heatmapDownload.download = data.filename || 'heatmap.png';
+                    heatmapSection.classList.add('active');
+                    return;
+                }
+
+                if (retries > 0) {
+                    setTimeout(() => {
+                        fetchAndDisplayHeatmap({ retries: retries - 1, delayMs });
+                    }, delayMs);
+                } else {
+                    heatmapSection.classList.remove('active');
+                }
+            } catch (error) {
+                console.error('Error fetching heatmap:', error);
+                if (retries > 0) {
+                    setTimeout(() => {
+                        fetchAndDisplayHeatmap({ retries: retries - 1, delayMs });
+                    }, delayMs);
+                } else {
+                    heatmapSection.classList.remove('active');
+                }
+            }
+        }
+
+        const reportRange = document.getElementById('reportRange');
+        const exportCsvBtn = document.getElementById('exportCsvBtn');
+        const exportPdfBtn = document.getElementById('exportPdfBtn');
+
+        if (exportCsvBtn) {
+            exportCsvBtn.addEventListener('click', () => {
+                const range = reportRange ? reportRange.value : 'daily';
+                window.location.href = `/export_report?format=csv&range=${encodeURIComponent(range)}`;
+            });
+        }
+
+        if (exportPdfBtn) {
+            exportPdfBtn.addEventListener('click', () => {
+                const range = reportRange ? reportRange.value : 'daily';
+                window.location.href = `/export_report?format=pdf&range=${encodeURIComponent(range)}`;
+            });
+        }
+    </script>
+</body>
+</html>

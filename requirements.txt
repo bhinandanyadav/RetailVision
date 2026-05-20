@@ -1,0 +1,47 @@
+# Core Python Libraries
+numpy
+pandas
+matplotlib
+seaborn
+scipy
+
+# Machine Learning
+scikit-learn
+joblib
+
+# Deep Learning (PyTorch)
+torch
+torchvision
+torchaudio
+
+# TensorFlow CPU version
+tensorflow==2.12
+
+# Computer Vision
+opencv-python
+opencv-contrib-python
+
+# Ultralytics YOLO
+ultralytics
+
+# Jupyter Notebook / Development
+jupyter
+notebook
+ipykernel
+
+# Image Processing / Utils
+Pillow
+tqdm
+pyyaml
+
+# Data Handling
+requests
+
+# Visualization
+plotly
+
+# Extras (optional but useful)
+python-dotenv
+
+# Web Framework
+flask
