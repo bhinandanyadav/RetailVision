@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Manage Subscription</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #0ea5a4;
+            --bg: #081018;
+            --panel: rgba(10, 21, 29, 0.95);
+            --panel-border: rgba(148, 163, 184, 0.2);
+            --text-primary: #f8fafc;
+            --text-secondary: #b5c3d6;
+            --muted: #7f93ab;
+        }
+        body { font-family: 'Work Sans', sans-serif; background: var(--bg); color: var(--text-primary); display:flex; align-items:center; justify-content:center; min-height:100vh; }
+        .card { width: min(680px, 100%); background:var(--panel); border:1px solid var(--panel-border); padding:28px; border-radius:14px; }
+        h1 { font-family: 'Space Grotesk', sans-serif; margin-bottom:8px }
+        p { color:var(--text-secondary); margin-bottom:12px }
+        .meta { background: rgba(8,16,24,0.6); padding:12px; border-radius:10px; border:1px solid rgba(148,163,184,0.08); margin-bottom:14px }
+        .actions { display:flex; gap:12px }
+        button { background:var(--primary); color:white; border:none; padding:10px 14px; border-radius:10px; cursor:pointer }
+        form { display:inline }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Subscription Management</h1>
+        <p>Manage your subscription for admin access.</p>
+        {% if not subscription %}
+        <div class="meta">No subscription record found. If you previously paid, contact support.</div>
+        {% else %}
+        <div class="meta">
+            <div><strong>Provider:</strong> {{ subscription['provider'] }}</div>
+            <div><strong>Provider ID:</strong> {{ subscription['provider_id'] }}</div>
+            <div><strong>Status:</strong> {{ subscription['status'] }}</div>
+            <div><strong>Started:</strong> {{ subscription['created_at'] }}</div>
+        </div>
+        {% if subscription['status'] == 'active' %}
+        <div class="actions">
+            <form method="post" action="{{ url_for('subscription_cancel') }}">
+                <button type="submit">Cancel Subscription</button>
+            </form>
+        </div>
+        {% else %}
+        <div class="meta">Subscription is not active.</div>
+        {% endif %}
+        {% endif %}
+    </div>
+</body>
+</html>
