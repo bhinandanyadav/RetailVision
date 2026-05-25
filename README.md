@@ -6,7 +6,7 @@ AI/ML project + web application for customer tracking and heatmap generation.
 
 1. Create and activate your virtual environment.
    ```bash
-   #create
+   #create;
 python -m venv venv
 ```
 ```bash
