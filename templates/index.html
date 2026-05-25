@@ -802,48 +802,7 @@
             color: var(--text-secondary);
         }
 
-        /* Keyboard Controls */
-        .keyboard-controls {
-            background: var(--bg-soft);
-            border-radius: 15px;
-            padding: 25px;
-        }
-
-        .keyboard-controls h4 {
-            font-size: 1.1rem;
-            margin-bottom: 20px;
-            color: var(--cyan);
-        }
-
-        .control-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
-        }
-
-        .control-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 8px;
-        }
-
-        .control-key {
-            background: var(--panel-strong);
-            padding: 6px 12px;
-            border-radius: 8px;
-            font-family: monospace;
-            font-size: 0.85rem;
-            min-width: 35px;
-            text-align: center;
-            color: var(--cyan);
-            border: 1px solid var(--panel-border);
-        }
-
-        .control-desc {
-            color: var(--text-secondary);
-            font-size: 0.85rem;
-        }
+        /* Keyboard Controls removed */
 
         /* Action Buttons */
         .action-buttons {
@@ -1241,6 +1200,148 @@
             flex-wrap: wrap;
         }
 
+        /* Data Hub */
+        .data-section {
+            background: var(--panel);
+            border-radius: 25px;
+            padding: 40px;
+            border: 1px solid var(--panel-border);
+            margin-bottom: 40px;
+        }
+
+        .data-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+
+        .data-header h3 {
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .data-header p {
+            color: var(--text-secondary);
+        }
+
+        .data-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 24px;
+        }
+
+        .data-card {
+            background: var(--bg-soft);
+            border-radius: 18px;
+            padding: 20px;
+            border: 1px solid var(--panel-border);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .data-card h4 {
+            font-size: 1.1rem;
+            color: var(--cyan);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .data-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .table-scroll {
+            max-height: 360px;
+            overflow: auto;
+            border: 1px solid var(--panel-border);
+            border-radius: 14px;
+            background: var(--panel);
+            scrollbar-gutter: stable;
+        }
+
+        .table-scroll .data-table {
+            min-width: 100%;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 10px 8px;
+            border-bottom: 1px solid var(--panel-border);
+            text-align: left;
+            vertical-align: middle;
+            color: var(--text-secondary);
+        }
+
+        .data-table th {
+            color: var(--text-primary);
+            font-weight: 600;
+            font-size: 0.85rem;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+        }
+
+        .table-input,
+        .table-select {
+            background: var(--panel-strong);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            padding: 6px 8px;
+            font-size: 0.85rem;
+            width: 100%;
+        }
+
+        .btn-sm {
+            padding: 8px 12px;
+            font-size: 0.85rem;
+            border-radius: 10px;
+        }
+
+        .table-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .data-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .empty-state {
+            padding: 14px;
+            border-radius: 12px;
+            background: var(--panel-strong);
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        .readonly .table-input,
+        .readonly .table-select,
+        .readonly .table-actions,
+        .readonly .data-actions .admin-only {
+            pointer-events: none;
+            opacity: 0.55;
+        }
+
         /* Footer */
         .footer {
             background: var(--panel-strong);
@@ -1342,6 +1443,10 @@
             .quick-steps {
                 grid-template-columns: 1fr;
             }
+
+            .data-grid {
+                grid-template-columns: 1fr;
+            }
         }
 
         @media (max-width: 768px) {
@@ -1388,6 +1493,145 @@
 
             .heatmap-legend {
                 flex-direction: column;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .header {
+                padding: 16px 14px;
+            }
+
+            .header-content {
+                align-items: stretch;
+                text-align: center;
+            }
+
+            .nav-links {
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 10px;
+                font-size: 0.92rem;
+            }
+
+            .header-actions {
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 8px;
+            }
+
+            .main-container {
+                padding: 16px;
+            }
+
+            .hero {
+                padding-top: 24px;
+            }
+
+            .hero h1 {
+                font-size: 1.75rem;
+            }
+
+            .hero p {
+                font-size: 0.98rem;
+                line-height: 1.6;
+            }
+
+            .quick-step-card,
+            .input-section,
+            .preview-section,
+            .settings-section,
+            .data-section,
+            .footer {
+                padding: 18px;
+            }
+
+            .quick-steps {
+                gap: 12px;
+            }
+
+            .input-option,
+            .upload-dropzone,
+            .mode-selection,
+            .zone-editor,
+            .settings-card,
+            .data-card {
+                padding: 18px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .control-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .action-buttons {
+                gap: 10px;
+            }
+
+            .btn {
+                width: 100%;
+            }
+
+            .reports-panel {
+                align-items: stretch;
+            }
+
+            .reports-actions,
+            .data-actions,
+            .data-filters,
+            .zone-editor-actions,
+            .setting-control {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .reports-actions .setting-select,
+            .reports-actions .btn,
+            .data-actions .table-input,
+            .data-actions .table-select,
+            .data-actions .btn,
+            .data-filters .table-select,
+            .setting-control .setting-range,
+            .setting-control .setting-input,
+            .setting-control .setting-select {
+                width: 100%;
+                min-width: 0;
+            }
+
+            .setting-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .setting-control {
+                justify-content: flex-start;
+            }
+
+            .data-table {
+                font-size: 0.8rem;
+            }
+
+            .data-table th,
+            .data-table td {
+                padding: 8px 6px;
+            }
+
+            .legend-bar,
+            .legend-labels {
+                width: 100%;
+            }
+
+            .saved-heatmap .heatmap-meta {
+                flex-direction: column;
+            }
+
+            .footer-links {
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 14px;
             }
         }
 
@@ -1495,7 +1739,11 @@
             <nav class="nav-links">
                 <a href="#input">Input</a>
                 <a href="#previewSection">Preview</a>
+                <a href="#dataHub">Data</a>
                 <a href="#settings">Settings</a>
+                {% if user_role == 'admin' %}
+                <a href="{{ url_for('subscription_manage') }}">Manage Subscription</a>
+                {% endif %}
             </nav>
             <div class="header-actions">
                 <span class="role-badge" id="roleBadge">Role</span>
@@ -1661,36 +1909,7 @@
                         </div>
                     </div>
 
-                    <!-- Keyboard Controls -->
-                    <div class="keyboard-controls">
-                        <h4>⌨️ Keyboard Controls</h4>
-                        <div class="control-grid">
-                            <div class="control-item">
-                                <span class="control-key">Q</span>
-                                <span class="control-desc">Quit</span>
-                            </div>
-                            <div class="control-item">
-                                <span class="control-key">P</span>
-                                <span class="control-desc">Pause</span>
-                            </div>
-                            <div class="control-item">
-                                <span class="control-key">T</span>
-                                <span class="control-desc">Trails</span>
-                            </div>
-                            <div class="control-item">
-                                <span class="control-key">H</span>
-                                <span class="control-desc">Heatmap</span>
-                            </div>
-                            <div class="control-item">
-                                <span class="control-key">S</span>
-                                <span class="control-desc">Save</span>
-                            </div>
-                            <div class="control-item">
-                                <span class="control-key">R</span>
-                                <span class="control-desc">Reset</span>
-                            </div>
-                        </div>
-                    </div>
+                    <!-- Keyboard Controls removed -->
 
                     <!-- Action Buttons -->
                     <div class="action-buttons">
@@ -1725,6 +1944,9 @@
                     <span style="color: var(--text-muted); margin-left: 8px;">Export CSV/PDF</span>
                 </div>
                 <div class="reports-actions">
+                    <select class="setting-select" id="reportSourceSelect">
+                        <option value="all" selected>All Sources</option>
+                    </select>
                     <select class="setting-select" id="reportRange">
                         <option value="daily" selected>Daily</option>
                         <option value="weekly">Weekly</option>
@@ -1742,6 +1964,123 @@
                 </div>
                 <div class="heatmap-actions">
                     <a id="savedHeatmapDownload" class="heatmap-download" href="" download>⬇️ Download</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="dataHub" class="data-section">
+            <div class="data-header">
+                <div>
+                    <h3>📚 Data Hub</h3>
+                    <p>Manage camera sources and review analytics history.</p>
+                </div>
+            </div>
+
+            <div class="data-grid">
+                <div class="data-card" id="cameraCard">
+                    <h4>📷 Camera Sources</h4>
+                    <div class="data-actions">
+                        <input class="table-input admin-only" id="newCameraName" placeholder="Camera name">
+                        <input class="table-input admin-only" id="newCameraSource" placeholder="Source (0, rtsp://...)">
+                        <select class="table-select admin-only" id="newCameraMode">
+                            <option value="tracking" selected>Tracking</option>
+                            <option value="heatmap">Heatmap</option>
+                        </select>
+                        <label class="setting-checkbox admin-only">
+                            <input type="checkbox" id="newCameraEnabled" checked>
+                            <span>Enabled</span>
+                        </label>
+                        <button class="btn btn-success btn-sm admin-only" id="addCameraBtn" type="button">Add</button>
+                    </div>
+                    <div style="overflow-x: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Source</th>
+                                    <th>Default Mode</th>
+                                    <th>Enabled</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cameraTableBody">
+                                <tr><td colspan="5" class="empty-state">No cameras yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="data-card" id="analyticsCard">
+                    <h4>📈 Analytics History</h4>
+                    <div class="data-filters">
+                        <label class="setting-checkbox">
+                            <span>Source</span>
+                            <select class="table-select" id="analyticsSourceSelect">
+                                <option value="all" selected>All</option>
+                            </select>
+                        </label>
+                        <label class="setting-checkbox">
+                            <span>Limit</span>
+                            <select class="table-select" id="analyticsLimitSelect">
+                                <option value="10">10</option>
+                                <option value="50" selected>50</option>
+                                <option value="100">100</option>
+                                <option value="200">200</option>
+                            </select>
+                        </label>
+                        <button class="btn btn-secondary btn-sm" id="refreshAnalyticsBtn" type="button">Refresh</button>
+                    </div>
+                    <div class="table-scroll">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Captured</th>
+                                    <th>Source</th>
+                                    <th>Mode</th>
+                                    <th>Unique</th>
+                                    <th>Detections</th>
+                                    <th>Queue</th>
+                                    <th>Crowd</th>
+                                    <th>Duration</th>
+                                </tr>
+                            </thead>
+                            <tbody id="analyticsTableBody">
+                                <tr><td colspan="8" class="empty-state">No history yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="data-card admin-only" id="auditCard">
+                    <h4>🧾 Session & Audit Logs</h4>
+                    <div class="data-filters">
+                        <label class="setting-checkbox">
+                            <span>Limit</span>
+                            <select class="table-select" id="auditLimitSelect">
+                                <option value="10">10</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                                <option value="200" selected>200</option>
+                            </select>
+                        </label>
+                        <button class="btn btn-secondary btn-sm" id="refreshAuditBtn" type="button">Refresh</button>
+                    </div>
+                    <div class="table-scroll">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>User</th>
+                                    <th>Action</th>
+                                    <th>Detail</th>
+                                    <th>IP</th>
+                                </tr>
+                            </thead>
+                            <tbody id="auditTableBody">
+                                <tr><td colspan="5" class="empty-state">No logs yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </section>
@@ -1990,6 +2329,7 @@
         let zoneStart = null;
         let zoneCurrent = null;
         const zoneRects = { queue: null, restricted: null };
+        let cameraSources = [];
 
         const userRole = "{{ user_role }}";
         const roleBadge = document.getElementById('roleBadge');
@@ -2037,6 +2377,14 @@
             if (zoneEditor) {
                 zoneEditor.style.display = 'none';
             }
+            const adminCards = document.querySelectorAll('.admin-only');
+            adminCards.forEach((node) => {
+                if (node.classList.contains('data-card')) {
+                    node.style.display = 'none';
+                } else {
+                    node.style.display = 'none';
+                }
+            });
         }
 
         loadZonesForCamera(currentSourceKey);
@@ -2227,6 +2575,11 @@
         if (cameraSelect) {
             cameraSelect.addEventListener('change', (event) => {
                 selectedCamera = event.target.value;
+                const selectedOption = event.target.selectedOptions[0];
+                const defaultMode = selectedOption?.dataset?.defaultMode;
+                if (defaultMode) {
+                    applyModeSelection(defaultMode);
+                }
                 updateSourceKey();
                 loadZonesForCamera(currentSourceKey);
                 scheduleSettingsUpdate(0);
@@ -2454,6 +2807,15 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         // Drag and Drop
         const dropzone = document.getElementById('dropzone');
         
@@ -2518,45 +2880,52 @@
         }
 
         // Mode Selection
-        function selectMode(mode) {
+        function applyModeSelection(mode, targetEl = null) {
             selectedMode = mode;
-            
+
             document.querySelectorAll('.mode-option').forEach(opt => {
                 opt.classList.remove('active');
             });
-            event.currentTarget.classList.add('active');
-            
-            // Update badge
+
+            const activeEl = targetEl || document.querySelector(`.mode-option input[value="${mode}"]`)?.closest('.mode-option');
+            if (activeEl) {
+                activeEl.classList.add('active');
+            }
+
             const modeTexts = {
                 'tracking': '🎯 Tracking Mode',
                 'heatmap': '🔥 Heatmap Mode'
             };
-            
+
             if (modeTexts[mode]) {
                 document.getElementById('modeBadge').innerHTML = `<span>${modeTexts[mode].split(' ')[0]}</span> ${modeTexts[mode].split(' ').slice(1).join(' ')}`;
             }
-            
-            // Show/hide heatmap legend
+
             document.getElementById('heatmapLegend').classList.toggle('active', mode === 'heatmap');
-            
-            // If already streaming, switch mode
+
             if (document.getElementById('videoStream').style.display === 'block') {
                 fetch(`/switch_mode/${mode}`, { method: 'POST' })
                     .then(response => response.json())
-                    .then(data => {
-                        // Restart the stream with new mode
+                    .then(() => {
                         setStreamStatus('connecting');
                         document.getElementById('videoStream').src = '';
                         setTimeout(() => {
                             let source = '0';
                             if (selectedInput === 'video' && videoFile) {
                                 source = videoFile.name;
+                            } else if (selectedInput === 'webcam') {
+                                source = selectedCamera;
                             }
                             document.getElementById('videoStream').src = `/video_feed?source=${encodeURIComponent(source)}&mode=${selectedMode}`;
                         }, 100);
                     })
                     .catch(error => console.error('Error switching mode:', error));
             }
+        }
+
+        function selectMode(mode) {
+            const target = typeof event !== 'undefined' && event?.currentTarget ? event.currentTarget : null;
+            applyModeSelection(mode, target);
         }
 
         function setStreamStatus(state) {
@@ -2688,6 +3057,352 @@
             setTimeout(() => {
                 toast.classList.remove('active');
             }, 3000);
+        }
+
+        function formatTimestamp(value) {
+            if (!value) {
+                return '-';
+            }
+            const parsed = new Date(String(value).replace(' ', 'T') + 'Z');
+            if (Number.isNaN(parsed.getTime())) {
+                return value;
+            }
+            return parsed.toLocaleString();
+        }
+
+        function renderCameraSelect(cameras) {
+            const select = document.getElementById('cameraSelect');
+            if (!select) {
+                return;
+            }
+            if (!Array.isArray(cameras) || cameras.length === 0) {
+                return;
+            }
+
+            const previousValue = select.value;
+            select.innerHTML = '';
+            cameras.filter((camera) => camera.enabled).forEach((camera) => {
+                const option = document.createElement('option');
+                option.value = camera.source;
+                option.dataset.defaultMode = camera.default_mode || 'tracking';
+                option.textContent = `${camera.name} (${camera.source})`;
+                select.appendChild(option);
+            });
+
+            if (!select.options.length) {
+                const fallback = document.createElement('option');
+                fallback.value = '0';
+                fallback.textContent = 'Camera 0 (Default)';
+                select.appendChild(fallback);
+            }
+
+            const nextOption = Array.from(select.options).find((opt) => opt.value === previousValue) || select.options[0];
+            if (nextOption) {
+                select.value = nextOption.value;
+                selectedCamera = nextOption.value;
+                const defaultMode = nextOption.dataset.defaultMode;
+                if (defaultMode) {
+                    applyModeSelection(defaultMode);
+                }
+            }
+        }
+
+        function renderCameraTable(cameras) {
+            const tableBody = document.getElementById('cameraTableBody');
+            const cameraCard = document.getElementById('cameraCard');
+            if (!tableBody) {
+                return;
+            }
+
+            if (cameraCard && userRole !== 'admin') {
+                cameraCard.classList.add('readonly');
+            }
+
+            if (!Array.isArray(cameras) || cameras.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="5" class="empty-state">No cameras yet.</td></tr>';
+                return;
+            }
+
+            tableBody.innerHTML = cameras.map((camera) => {
+                const mode = camera.default_mode || 'tracking';
+                return `
+                    <tr data-id="${camera.id}">
+                        <td><input class="table-input" value="${escapeHtml(camera.name)}"></td>
+                        <td><input class="table-input" value="${escapeHtml(camera.source)}"></td>
+                        <td>
+                            <select class="table-select">
+                                <option value="tracking" ${mode === 'tracking' ? 'selected' : ''}>Tracking</option>
+                                <option value="heatmap" ${mode === 'heatmap' ? 'selected' : ''}>Heatmap</option>
+                            </select>
+                        </td>
+                        <td>
+                            <label class="setting-checkbox">
+                                <input type="checkbox" ${camera.enabled ? 'checked' : ''}>
+                            </label>
+                        </td>
+                        <td>
+                            <div class="table-actions">
+                                <button class="btn btn-secondary btn-sm" data-action="save" type="button">Save</button>
+                                <button class="btn btn-danger btn-sm" data-action="delete" type="button">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderAnalyticsHistory(rows) {
+            const tableBody = document.getElementById('analyticsTableBody');
+            if (!tableBody) {
+                return;
+            }
+
+            if (!Array.isArray(rows) || rows.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="8" class="empty-state">No history yet.</td></tr>';
+                return;
+            }
+
+            tableBody.innerHTML = rows.map((entry) => `
+                <tr>
+                    <td>${formatTimestamp(entry.captured_at)}</td>
+                    <td>${escapeHtml(entry.source_key || '-')}</td>
+                    <td>${escapeHtml(entry.mode || '-')}</td>
+                    <td>${entry.unique_customers ?? '-'}</td>
+                    <td>${entry.total_detections ?? '-'}</td>
+                    <td>${entry.queue_length ?? '-'}</td>
+                    <td>${entry.crowd_level ?? '-'}</td>
+                    <td>${entry.duration_seconds ?? '-'}s</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderAuditLogs(rows) {
+            const tableBody = document.getElementById('auditTableBody');
+            if (!tableBody) {
+                return;
+            }
+
+            if (!Array.isArray(rows) || rows.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="5" class="empty-state">No logs yet.</td></tr>';
+                return;
+            }
+
+            tableBody.innerHTML = rows.map((entry) => `
+                <tr>
+                    <td>${formatTimestamp(entry.created_at)}</td>
+                    <td>${escapeHtml(entry.user_email || entry.user_id || 'Unknown')}</td>
+                    <td>${escapeHtml(entry.action || '-')}
+                    <td>${escapeHtml(entry.detail || '-')}
+                    <td>${escapeHtml(entry.ip_address || '-')}</td>
+                </tr>
+            `).join('');
+        }
+
+        function updateAnalyticsSourceOptions(cameras) {
+            const select = document.getElementById('analyticsSourceSelect');
+            if (!select) {
+                return;
+            }
+            const previous = select.value || 'all';
+            select.innerHTML = '<option value="all">All</option>';
+            cameras.forEach((camera) => {
+                const option = document.createElement('option');
+                option.value = camera.source;
+                option.textContent = `${camera.name} (${camera.source})`;
+                select.appendChild(option);
+            });
+            select.value = previous;
+        }
+
+        function updateReportSourceOptions(cameras) {
+            const select = document.getElementById('reportSourceSelect');
+            if (!select) {
+                return;
+            }
+            const previous = select.value || 'all';
+            select.innerHTML = '<option value="all">All Sources</option>';
+            cameras.forEach((camera) => {
+                const option = document.createElement('option');
+                option.value = camera.source;
+                option.textContent = `${camera.name} (${camera.source})`;
+                select.appendChild(option);
+            });
+            select.value = previous;
+        }
+
+        async function fetchCameraSources() {
+            try {
+                const response = await fetch('/api/cameras');
+                const data = await response.json();
+                if (data.status !== 'success') {
+                    showToast('Could not load cameras.', 'error');
+                    return;
+                }
+                cameraSources = data.cameras || [];
+                renderCameraTable(cameraSources);
+                renderCameraSelect(cameraSources);
+                updateAnalyticsSourceOptions(cameraSources);
+                updateReportSourceOptions(cameraSources);
+            } catch (error) {
+                console.error('Camera fetch error:', error);
+            }
+        }
+
+        async function fetchAnalyticsHistory() {
+            const limit = document.getElementById('analyticsLimitSelect')?.value || '50';
+            const source = document.getElementById('analyticsSourceSelect')?.value || 'all';
+            const params = new URLSearchParams({ limit });
+            if (source !== 'all') {
+                params.append('source', source);
+            }
+            try {
+                const response = await fetch(`/api/analytics_history?${params.toString()}`);
+                const data = await response.json();
+                if (data.status !== 'success') {
+                    showToast('Could not load history.', 'error');
+                    return;
+                }
+                renderAnalyticsHistory(data.history || []);
+            } catch (error) {
+                console.error('Analytics history error:', error);
+            }
+        }
+
+        async function fetchAuditLogs() {
+            if (userRole !== 'admin') {
+                return;
+            }
+            const limit = document.getElementById('auditLimitSelect')?.value || '200';
+            try {
+                const response = await fetch(`/api/audit_logs?limit=${encodeURIComponent(limit)}`);
+                const data = await response.json();
+                if (data.status !== 'success') {
+                    showToast('Could not load audit logs.', 'error');
+                    return;
+                }
+                renderAuditLogs(data.logs || []);
+            } catch (error) {
+                console.error('Audit log error:', error);
+            }
+        }
+
+        const addCameraBtn = document.getElementById('addCameraBtn');
+        if (addCameraBtn) {
+            addCameraBtn.addEventListener('click', async () => {
+                const name = document.getElementById('newCameraName')?.value.trim();
+                const source = document.getElementById('newCameraSource')?.value.trim();
+                const defaultMode = document.getElementById('newCameraMode')?.value || 'tracking';
+                const enabled = document.getElementById('newCameraEnabled')?.checked ?? true;
+
+                if (!name || !source) {
+                    showToast('Name and source are required.', 'warning');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/cameras', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, source, default_mode: defaultMode, enabled })
+                    });
+                    const data = await response.json();
+                    if (data.status !== 'success') {
+                        showToast(data.message || 'Could not add camera.', 'error');
+                        return;
+                    }
+                    document.getElementById('newCameraName').value = '';
+                    document.getElementById('newCameraSource').value = '';
+                    document.getElementById('newCameraEnabled').checked = true;
+                    showToast('Camera added!', 'success');
+                    await fetchCameraSources();
+                } catch (error) {
+                    console.error('Add camera error:', error);
+                }
+            });
+        }
+
+        const cameraTableBody = document.getElementById('cameraTableBody');
+        if (cameraTableBody) {
+            cameraTableBody.addEventListener('click', async (event) => {
+                const button = event.target.closest('button[data-action]');
+                if (!button) {
+                    return;
+                }
+                const row = button.closest('tr');
+                const cameraId = row?.dataset?.id;
+                if (!cameraId) {
+                    return;
+                }
+
+                const inputs = row.querySelectorAll('input');
+                const selects = row.querySelectorAll('select');
+                const name = inputs[0]?.value.trim();
+                const source = inputs[1]?.value.trim();
+                const enabled = inputs[2]?.checked ?? false;
+                const defaultMode = selects[0]?.value || 'tracking';
+
+                if (button.dataset.action === 'delete') {
+                    const confirmed = confirm('Delete this camera source?');
+                    if (!confirmed) {
+                        return;
+                    }
+                    try {
+                        const response = await fetch(`/api/cameras/${cameraId}`, { method: 'DELETE' });
+                        const data = await response.json();
+                        if (data.status !== 'success') {
+                            showToast(data.message || 'Could not delete camera.', 'error');
+                            return;
+                        }
+                        showToast('Camera deleted.', 'success');
+                        await fetchCameraSources();
+                    } catch (error) {
+                        console.error('Delete camera error:', error);
+                    }
+                    return;
+                }
+
+                if (!name || !source) {
+                    showToast('Name and source are required.', 'warning');
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/api/cameras/${cameraId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, source, default_mode: defaultMode, enabled })
+                    });
+                    const data = await response.json();
+                    if (data.status !== 'success') {
+                        showToast(data.message || 'Could not update camera.', 'error');
+                        return;
+                    }
+                    showToast('Camera updated.', 'success');
+                    await fetchCameraSources();
+                } catch (error) {
+                    console.error('Update camera error:', error);
+                }
+            });
+        }
+
+        const refreshAnalyticsBtn = document.getElementById('refreshAnalyticsBtn');
+        if (refreshAnalyticsBtn) {
+            refreshAnalyticsBtn.addEventListener('click', fetchAnalyticsHistory);
+        }
+
+        const analyticsSourceSelect = document.getElementById('analyticsSourceSelect');
+        if (analyticsSourceSelect) {
+            analyticsSourceSelect.addEventListener('change', fetchAnalyticsHistory);
+        }
+
+        const analyticsLimitSelect = document.getElementById('analyticsLimitSelect');
+        if (analyticsLimitSelect) {
+            analyticsLimitSelect.addEventListener('change', fetchAnalyticsHistory);
+        }
+
+        const refreshAuditBtn = document.getElementById('refreshAuditBtn');
+        if (refreshAuditBtn) {
+            refreshAuditBtn.addEventListener('click', fetchAuditLogs);
         }
 
         // Smooth scrolling for nav links
@@ -2884,22 +3599,35 @@
         }
 
         const reportRange = document.getElementById('reportRange');
+        const reportSourceSelect = document.getElementById('reportSourceSelect');
         const exportCsvBtn = document.getElementById('exportCsvBtn');
         const exportPdfBtn = document.getElementById('exportPdfBtn');
 
         if (exportCsvBtn) {
             exportCsvBtn.addEventListener('click', () => {
                 const range = reportRange ? reportRange.value : 'daily';
-                window.location.href = `/export_report?format=csv&range=${encodeURIComponent(range)}`;
+                const params = new URLSearchParams({ format: 'csv', range });
+                if (reportSourceSelect && reportSourceSelect.value !== 'all') {
+                    params.append('source', reportSourceSelect.value);
+                }
+                window.location.href = `/export_report?${params.toString()}`;
             });
         }
 
         if (exportPdfBtn) {
             exportPdfBtn.addEventListener('click', () => {
                 const range = reportRange ? reportRange.value : 'daily';
-                window.location.href = `/export_report?format=pdf&range=${encodeURIComponent(range)}`;
+                const params = new URLSearchParams({ format: 'pdf', range });
+                if (reportSourceSelect && reportSourceSelect.value !== 'all') {
+                    params.append('source', reportSourceSelect.value);
+                }
+                window.location.href = `/export_report?${params.toString()}`;
             });
         }
+
+        fetchCameraSources();
+        fetchAnalyticsHistory();
+        fetchAuditLogs();
     </script>
 </body>
 </html>

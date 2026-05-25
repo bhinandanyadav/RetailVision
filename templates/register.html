@@ -9,17 +9,22 @@
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #2563eb;
-            --bg: #0b1220;
-            --panel: rgba(17, 24, 39, 0.92);
-            --panel-border: rgba(148, 163, 184, 0.18);
+            --primary: #0ea5a4;
+            --accent: #f97316;
+            --bg: #081018;
+            --panel: rgba(10, 21, 29, 0.95);
+            --panel-border: rgba(148, 163, 184, 0.2);
             --text-primary: #f8fafc;
-            --text-secondary: #cbd5f5;
+            --text-secondary: #b5c3d6;
+            --muted: #7f93ab;
         }
 
         body {
             font-family: 'Work Sans', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: radial-gradient(circle at top left, rgba(14, 165, 233, 0.12), transparent 45%), var(--bg);
+            background:
+                radial-gradient(circle at 10% 15%, rgba(14, 165, 164, 0.16), transparent 40%),
+                radial-gradient(circle at 90% 15%, rgba(249, 115, 22, 0.12), transparent 35%),
+                linear-gradient(180deg, rgba(10, 21, 29, 0.94), rgba(8, 16, 24, 1));
             color: var(--text-primary);
             min-height: 100vh;
             display: flex;
@@ -29,7 +34,7 @@
         }
 
         .register-card {
-            width: min(440px, 100%);
+            width: min(520px, 100%);
             background: var(--panel);
             border: 1px solid var(--panel-border);
             border-radius: 20px;
@@ -46,6 +51,69 @@
         .register-card p {
             color: var(--text-secondary);
             margin-bottom: 20px;
+        }
+
+        .role-grid {
+            display: grid;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .role-card {
+            display: grid;
+            gap: 6px;
+            padding: 14px 16px;
+            border-radius: 14px;
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            background: rgba(8, 16, 24, 0.65);
+            cursor: pointer;
+            transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .role-card input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .role-card:hover {
+            transform: translateY(-1px);
+            border-color: rgba(14, 165, 164, 0.6);
+            box-shadow: 0 10px 22px rgba(14, 165, 164, 0.12);
+        }
+
+        .role-card.is-locked {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .role-card.is-locked:hover {
+            transform: none;
+            border-color: rgba(148, 163, 184, 0.22);
+            box-shadow: none;
+        }
+
+        .role-title {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .role-desc {
+            color: var(--muted);
+            font-size: 0.92rem;
+        }
+
+        .role-lock {
+            font-size: 0.8rem;
+            color: var(--accent);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .role-card.is-selected {
+            border-color: rgba(14, 165, 164, 0.7);
+            box-shadow: inset 0 0 0 1px rgba(14, 165, 164, 0.35);
         }
 
         .form-group {
@@ -66,7 +134,7 @@
             border-radius: 10px;
             padding: 10px 12px;
             color: var(--text-primary);
-            font-size: 0.95rem;
+            font-size: 16px;
         }
 
         button {
@@ -80,6 +148,16 @@
             cursor: pointer;
         }
 
+        .info {
+            background: rgba(14, 165, 164, 0.15);
+            border: 1px solid rgba(14, 165, 164, 0.3);
+            padding: 10px 12px;
+            border-radius: 10px;
+            margin-bottom: 16px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
         .error {
             background: rgba(220, 38, 38, 0.2);
             border: 1px solid rgba(220, 38, 38, 0.4);
@@ -88,15 +166,53 @@
             margin-bottom: 16px;
             color: #fecaca;
         }
+
+        @media (max-width: 600px) {
+            body {
+                align-items: flex-start;
+                padding: 16px;
+            }
+
+            .register-card {
+                padding: 20px;
+                border-radius: 16px;
+            }
+
+            .register-card h1 {
+                font-size: 1.55rem;
+            }
+
+            .role-card {
+                padding: 12px 14px;
+            }
+
+            button {
+                padding: 14px 16px;
+            }
+        }
     </style>
 </head>
 <body>
     <form class="register-card" method="POST">
         <h1>Create Account</h1>
-        <p>Sign up to access the Store Tracker dashboard.</p>
+        <p>Choose the account type and fill in your details.</p>
         {% if error %}
         <div class="error">{{ error }}</div>
         {% endif %}
+        <div class="info">Admin access requires a $21/month subscription. Admins activate after payment.</div>
+        <div class="role-grid">
+            <label class="role-card {% if (selected_role or 'viewer') == 'viewer' %}is-selected{% endif %}">
+                <input type="radio" name="role" value="viewer" {% if (selected_role or 'viewer') == 'viewer' %}checked{% endif %}>
+                <span class="role-title">Viewer</span>
+                <span class="role-desc">Access live tracking, analytics, and reports.</span>
+            </label>
+            <label class="role-card {% if (selected_role or 'viewer') == 'admin' %}is-selected{% endif %}">
+                <input type="radio" name="role" value="admin" {% if (selected_role or 'viewer') == 'admin' %}checked{% endif %}>
+                <span class="role-title">Admin</span>
+                <span class="role-desc">Manage cameras, settings, and audit logs.</span>
+                <span class="role-lock">Subscription required</span>
+            </label>
+        </div>
         <div class="form-group">
             <label for="name">Full Name</label>
             <input id="name" name="name" type="text" required>
@@ -118,5 +234,23 @@
             Already have an account? <a href="{{ url_for('login') }}" style="color: var(--text-primary); text-decoration: none;">Sign in</a>
         </p>
     </form>
+    <script>
+        const roleCards = document.querySelectorAll('.role-card');
+
+        roleCards.forEach((card) => {
+            const input = card.querySelector('input');
+            if (!input) {
+                return;
+            }
+
+            card.addEventListener('click', () => {
+                if (input.disabled) {
+                    return;
+                }
+                roleCards.forEach((item) => item.classList.remove('is-selected'));
+                card.classList.add('is-selected');
+            });
+        });
+    </script>
 </body>
 </html>

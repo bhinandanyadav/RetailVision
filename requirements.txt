@@ -15,7 +15,7 @@ torchvision
 torchaudio
 
 # TensorFlow CPU version
-tensorflow==2.12
+tensorflow==2.16.1
 
 # Computer Vision
 opencv-python
@@ -45,3 +45,10 @@ python-dotenv
 
 # Web Framework
 flask
+
+# Production WSGI server
+gunicorn
+waitress
+
+# Database + Auth
+bcrypt

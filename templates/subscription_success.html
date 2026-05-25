@@ -7,11 +7,30 @@
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         :root { --primary: #0ea5a4; --bg:#081018; --panel:rgba(10,21,29,0.95); --text-primary:#f8fafc; --text-secondary:#b5c3d6 }
-        body{font-family: 'Work Sans', sans-serif; background:var(--bg); color:var(--text-primary); display:flex; align-items:center; justify-content:center; min-height:100vh}
+        body{font-family: 'Work Sans', sans-serif; background:var(--bg); color:var(--text-primary); display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px}
         .card{background:var(--panel); border-radius:14px; padding:28px; border:1px solid rgba(148,163,184,0.12); width:min(640px,100%)}
         h1{font-family:'Space Grotesk', sans-serif}
         p{color:var(--text-secondary)}
         a.button{display:inline-block;margin-top:12px;background:var(--primary); color:white; padding:10px 14px;border-radius:10px; text-decoration:none}
+
+        @media (max-width: 600px) {
+            body {
+                align-items: flex-start;
+                padding: 16px;
+            }
+
+            .card {
+                padding: 20px;
+                border-radius: 16px;
+            }
+
+            a.button {
+                display: block;
+                text-align: center;
+                width: 100%;
+                box-sizing: border-box;
+            }
+        }
     </style>
 </head>
 <body>

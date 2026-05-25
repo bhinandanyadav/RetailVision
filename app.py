@@ -1,26 +1,203 @@
-from flask import Flask, render_template, Response, request, jsonify, send_file, session, redirect, url_for
+from flask import Flask, render_template, Response, request, jsonify, send_file, session, redirect, url_for  # pyright: ignore[reportMissingImports]
 import os
 import base64
 import io
 import csv
 import time
-import matplotlib
+import hmac
+import hashlib
+import uuid
+import matplotlib 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import sqlite3
+import bcrypt
+import requests
+from dotenv import load_dotenv
 from model import generate_frames, generate_heatmap, stop_processing, get_analytics_data, apply_settings
 from analysis_state import current_analysis
 
 app = Flask(__name__)
+load_dotenv()
 app.secret_key = os.environ.get('STORE_TRACKER_SECRET', 'store-tracker-dev-key')
 
-ADMIN_PASSWORD = os.environ.get('STORE_TRACKER_ADMIN_PASSWORD', 'admin123')
-VIEWER_PASSWORD = os.environ.get('STORE_TRACKER_VIEWER_PASSWORD', 'viewer123')
+DB_PATH = os.environ.get('STORE_TRACKER_DB_PATH', 'store_tracker.sqlite')
+ADMIN_SUBSCRIPTION_AMOUNT_USD_CENTS = int(
+    os.environ.get('ADMIN_SUBSCRIPTION_AMOUNT_USD_CENTS', '2100')
+)
+ADMIN_SUBSCRIPTION_CURRENCY = 'USD'
+RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID', '')
+RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET', '')
+RAZORPAY_WEBHOOK_SECRET = os.environ.get('RAZORPAY_WEBHOOK_SECRET', '')
 
 current_source_key = '0'
 camera_stats_cache = {}
+analytics_last_snapshot = {}
+SNAPSHOT_INTERVAL_SEC = 15
 
 video_source = 0  # default webcam
 current_mode = 'tracking'  # 'tracking' or 'heatmap'
+
+
+def get_db_path():
+    if os.path.isabs(DB_PATH):
+        return DB_PATH
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), DB_PATH))
+
+
+def get_db_connection():
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def set_pending_admin_session(user_row):
+    session['pending_admin_id'] = user_row['id']
+    session['pending_admin_email'] = user_row['email']
+    session['pending_admin_name'] = user_row['name']
+    
+def init_db():
+    conn = get_db_connection()
+    with conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                role TEXT NOT NULL DEFAULT 'viewer',
+                password_hash TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS camera_sources (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                source TEXT NOT NULL UNIQUE,
+                default_mode TEXT NOT NULL DEFAULT 'tracking',
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS analytics_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                captured_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                source_key TEXT,
+                mode TEXT,
+                frame_count INTEGER,
+                total_detections INTEGER,
+                unique_customers INTEGER,
+                active_detections INTEGER,
+                queue_length INTEGER,
+                crowd_level INTEGER,
+                duration_seconds REAL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                user_id INTEGER,
+                user_email TEXT,
+                action TEXT NOT NULL,
+                detail TEXT,
+                ip_address TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS subscriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                provider TEXT NOT NULL,
+                provider_id TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+    conn.close()
+init_db()
+
+
+def log_audit_event(action, detail=None, user_id=None, user_email=None, ip_address=None):
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO audit_logs (user_id, user_email, action, detail, ip_address)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (user_id, user_email, action, detail, ip_address)
+            )
+    except Exception as exc:
+        print(f"Audit log error: {exc}")
+    finally:
+        if conn:
+            conn.close()
+
+
+def should_snapshot(source_key):
+    now = time.time()
+    last = analytics_last_snapshot.get(source_key, 0)
+    if (now - last) < SNAPSHOT_INTERVAL_SEC:
+        return False
+    analytics_last_snapshot[source_key] = now
+    return True
+
+
+def record_analytics_snapshot(stats, source_key, mode):
+    if not stats:
+        return
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO analytics_history (
+                    source_key,
+                    mode,
+                    frame_count,
+                    total_detections,
+                    unique_customers,
+                    active_detections,
+                    queue_length,
+                    crowd_level,
+                    duration_seconds
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    source_key,
+                    mode,
+                    stats.get('frameCount'),
+                    stats.get('totalDetections'),
+                    stats.get('uniqueCustomers'),
+                    stats.get('activeDetections'),
+                    stats.get('queueLength'),
+                    stats.get('crowdLevel'),
+                    stats.get('duration'),
+                )
+            )
+    except Exception as exc:
+        print(f"Analytics snapshot error: {exc}")
+    finally:
+        if conn:
+            conn.close()
 
 def get_role():
     return session.get('role')
@@ -28,6 +205,211 @@ def get_role():
 
 def require_login():
     return get_role() is not None
+
+
+def get_pending_admin_user(pending_admin_id):
+    if not pending_admin_id:
+        return None
+    conn = None
+    try:
+        conn = get_db_connection()
+        return conn.execute(
+            "SELECT id, name, email, role FROM users WHERE id = ?",
+            (pending_admin_id,)
+        ).fetchone()
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/subscription/manage', methods=['GET'])
+def subscription_manage():
+    if not require_login():
+        return redirect(url_for('login'))
+    user_id = session.get('user_id')
+    conn = None
+    sub = None
+    try:
+        conn = get_db_connection()
+        sub = conn.execute(
+            "SELECT id, provider, provider_id, status, created_at FROM subscriptions WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+            (user_id,)
+        ).fetchone()
+    finally:
+        if conn:
+            conn.close()
+
+    return render_template('subscription_manage.html', subscription=sub, user_role=get_role())
+
+
+@app.route('/subscription/cancel', methods=['POST'])
+def subscription_cancel():
+    if not require_login():
+        return jsonify({'status': 'error', 'message': 'Login required'}), 401
+    user_id = session.get('user_id')
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn:
+            conn.execute(
+                "UPDATE subscriptions SET status = ? WHERE user_id = ? AND status = ?",
+                ('canceled', user_id, 'active')
+            )
+            conn.execute(
+                "UPDATE users SET role = ? WHERE id = ? AND role = ?",
+                ('viewer', user_id, 'admin')
+            )
+        log_audit_event('subscription_canceled', user_id=user_id, user_email=session.get('user_email'))
+    finally:
+        if conn:
+            conn.close()
+    return redirect(url_for('subscription_manage'))
+
+
+@app.route('/subscription/success', methods=['GET'])
+def subscription_success():
+    if not require_login():
+        return redirect(url_for('login'))
+    return render_template('subscription_success.html', user_role=get_role())
+
+
+def create_razorpay_order(user_id, email, amount_minor_units):
+    payload = {
+        "amount": amount_minor_units,
+        "currency": ADMIN_SUBSCRIPTION_CURRENCY,
+        "receipt": f"admin-{user_id}-{uuid.uuid4().hex[:10]}",
+        "notes": {
+            "email": email,
+            "purpose": "admin_subscription"
+        }
+    }
+    response = requests.post(
+        "https://api.razorpay.com/v1/orders",
+        auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET),
+        json=payload,
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+@app.route('/webhook/razorpay', methods=['POST'])
+def razorpay_webhook():
+    # Verify signature header
+    signature = request.headers.get('X-Razorpay-Signature') or request.headers.get('x-razorpay-signature')
+    raw_body = request.get_data() or b''
+    if not RAZORPAY_WEBHOOK_SECRET:
+        # Webhook secret not configured; reject
+        return jsonify({'status': 'error', 'message': 'Webhook secret not configured'}), 500
+
+    try:
+        computed = hmac.new(
+            RAZORPAY_WEBHOOK_SECRET.encode('utf-8'),
+            raw_body,
+            hashlib.sha256
+        ).hexdigest()
+    except Exception as exc:
+        print(f"Webhook HMAC compute error: {exc}")
+        return jsonify({'status': 'error', 'message': 'Invalid webhook payload'}), 400
+
+    if not signature or not hmac.compare_digest(computed, signature):
+        # invalid signature
+        print('Invalid razorpay webhook signature')
+        return jsonify({'status': 'error', 'message': 'Invalid signature'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    event = payload.get('event') or ''
+
+    # Handle subscription related events
+    try:
+        conn = get_db_connection()
+        with conn:
+            # Extract identifiers safely
+            # Many Razorpay webhook payloads put entities under payload.<object>.<entity>
+            data = payload.get('payload', {})
+
+            # Helper to find subscription id or payment id
+            def _find_provider_ids(dct):
+                sub_id = None
+                payment_id = None
+                try:
+                    # subscription event
+                    sub_entity = dct.get('subscription') or dct.get('subscription_entity')
+                    if isinstance(sub_entity, dict):
+                        sub_id = sub_entity.get('entity', {}).get('id') or sub_entity.get('id')
+                except Exception:
+                    pass
+                try:
+                    # payment event
+                    pay_entity = dct.get('payment') or dct.get('payment_entity')
+                    if isinstance(pay_entity, dict):
+                        payment_id = pay_entity.get('entity', {}).get('id') or pay_entity.get('id')
+                except Exception:
+                    pass
+                # invoice
+                try:
+                    inv_entity = dct.get('invoice')
+                    if isinstance(inv_entity, dict):
+                        if not payment_id:
+                            payment_id = inv_entity.get('entity', {}).get('payment_id') or inv_entity.get('entity', {}).get('id')
+                except Exception:
+                    pass
+                return sub_id, payment_id
+
+            sub_id, payment_id = _find_provider_ids(data)
+
+            # Map events to subscription updates
+            if event in ('subscription.activated', 'subscription.created'):
+                if sub_id:
+                    # mark any matching subscription as active
+                    conn.execute(
+                        "UPDATE subscriptions SET status = ?, provider_id = ? WHERE provider = ? AND provider_id = ?",
+                        ('active', sub_id, 'razorpay', sub_id)
+                    )
+            elif event in ('subscription.cancelled', 'subscription.halted'):
+                # mark subscription canceled and demote user if necessary
+                if sub_id:
+                    row = conn.execute(
+                        "SELECT id, user_id FROM subscriptions WHERE provider = ? AND provider_id = ?",
+                        ('razorpay', sub_id)
+                    ).fetchone()
+                    if row:
+                        conn.execute(
+                            "UPDATE subscriptions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                            ('canceled', row['id'])
+                        )
+                        # demote user to viewer
+                        conn.execute(
+                            "UPDATE users SET role = ? WHERE id = ? AND role = ?",
+                            ('viewer', row['user_id'], 'admin')
+                        )
+                        log_audit_event('subscription_cancelled_webhook', user_id=row['user_id'], user_email=None, detail=f'provider_id={sub_id}', ip_address=request.remote_addr)
+            elif event in ('invoice.paid', 'payment.captured'):
+                # record payment against subscriptions if possible
+                # If payment_id found, try to map to subscription by provider_id
+                if payment_id:
+                    # If there is a subscription row with provider_id = payment_id, mark active
+                    row = conn.execute(
+                        "SELECT id, user_id FROM subscriptions WHERE provider = ? AND provider_id = ?",
+                        ('razorpay', payment_id)
+                    ).fetchone()
+                    if row:
+                        conn.execute(
+                            "UPDATE subscriptions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                            ('active', row['id'])
+                        )
+            # other events can be logged for audit
+            log_audit_event('razorpay_webhook_received', detail=event, ip_address=request.remote_addr)
+    except Exception as exc:
+        print(f"Webhook handling error: {exc}")
+        return jsonify({'status': 'error', 'message': 'Handler error'}), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    return jsonify({'status': 'ok'})
 
 
 @app.route("/")
@@ -40,20 +422,306 @@ def home():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        role = request.form.get('role')
+        email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
-        if role == 'admin' and password == ADMIN_PASSWORD:
-            session['role'] = 'admin'
-            return redirect(url_for('home'))
-        if role == 'viewer' and password == VIEWER_PASSWORD:
-            session['role'] = 'viewer'
-            return redirect(url_for('home'))
-        return render_template('login.html', error='Invalid credentials')
+        if not email or not password:
+            return render_template('login.html', error='Email and password are required.')
+
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, name, email, role, password_hash FROM users WHERE email = ?",
+                (email,)
+            )
+            user = cursor.fetchone()
+        except Exception as exc:
+            print(f"Login error: {exc}")
+            return render_template('login.html', error='Login service unavailable.')
+        finally:
+            try:
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+
+        if not user:
+            log_audit_event(
+                'login_failed',
+                detail=f"email={email}",
+                user_email=email,
+                ip_address=request.remote_addr
+            )
+            return render_template('login.html', error='Invalid credentials')
+
+        stored_hash = user['password_hash'] if user else ''
+        if not stored_hash:
+            log_audit_event(
+                'login_failed',
+                detail=f"email={email}",
+                user_email=email,
+                ip_address=request.remote_addr
+            )
+            return render_template('login.html', error='Invalid credentials')
+
+        if not bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8')):
+            log_audit_event(
+                'login_failed',
+                detail=f"email={email}",
+                user_email=email,
+                ip_address=request.remote_addr
+            )
+            return render_template('login.html', error='Invalid credentials')
+
+        if user['role'] == 'admin_pending':
+            set_pending_admin_session(user)
+            log_audit_event(
+                'admin_payment_required',
+                user_id=user['id'],
+                user_email=user['email'],
+                ip_address=request.remote_addr
+            )
+            return redirect(url_for('admin_subscribe'))
+
+        session['role'] = user['role'] or 'viewer'
+        session['user_id'] = user['id']
+        session['user_name'] = user['name']
+        session['user_email'] = user['email']
+        log_audit_event(
+            'login_success',
+            user_id=user['id'],
+            user_email=user['email'],
+            ip_address=request.remote_addr
+        )
+        return redirect(url_for('home'))
     return render_template('login.html', error=None)
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    can_create_admin = True
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+        confirm = request.form.get('confirm_password', '')
+        role = request.form.get('role', 'viewer').strip().lower() or 'viewer'
+        requested_role = role
+
+        if not name or not email or not password:
+            return render_template(
+                'register.html',
+                error='All fields are required.',
+                can_create_admin=can_create_admin,
+                selected_role=role,
+            )
+        if password != confirm:
+            return render_template(
+                'register.html',
+                error='Passwords do not match.',
+                can_create_admin=can_create_admin,
+                selected_role=role,
+            )
+        if role not in ['viewer', 'admin']:
+            return render_template(
+                'register.html',
+                error='Invalid role selection.',
+                can_create_admin=can_create_admin,
+                selected_role='viewer',
+            )
+
+        password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+        conn = None
+        cursor = None
+        user_id = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            if role == 'admin':
+                role = 'admin_pending'
+            cursor.execute(
+                "INSERT INTO users (name, email, role, password_hash) VALUES (?, ?, ?, ?)",
+                (name, email, role, password_hash)
+            )
+            user_id = cursor.lastrowid
+            conn.commit()
+        except sqlite3.IntegrityError:
+            return render_template(
+                'register.html',
+                error='Email already registered.',
+                can_create_admin=can_create_admin,
+                selected_role=requested_role,
+            )
+        except Exception as exc:
+            print(f"Register error: {exc}")
+            return render_template(
+                'register.html',
+                error='Registration failed. Try again.',
+                can_create_admin=can_create_admin,
+                selected_role=requested_role,
+            )
+        finally:
+            try:
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+
+        log_audit_event(
+            'register',
+            user_id=user_id,
+            user_email=email,
+            ip_address=request.remote_addr
+        )
+
+        if role == 'admin_pending':
+            set_pending_admin_session({'id': user_id, 'name': name, 'email': email})
+            return redirect(url_for('admin_subscribe'))
+
+        return redirect(url_for('login'))
+
+    return render_template('register.html', error=None, can_create_admin=can_create_admin, selected_role='viewer')
+
+
+@app.route('/admin/subscribe', methods=['GET'])
+def admin_subscribe():
+    pending_admin_id = session.get('pending_admin_id')
+    user = get_pending_admin_user(pending_admin_id)
+    if not user or user['role'] != 'admin_pending':
+        return redirect(url_for('register'))
+
+    amount_display = ADMIN_SUBSCRIPTION_AMOUNT_USD_CENTS / 100
+    amount_minor_units = ADMIN_SUBSCRIPTION_AMOUNT_USD_CENTS
+
+    if not RAZORPAY_KEY_ID or not RAZORPAY_KEY_SECRET:
+        return render_template(
+            'admin_payment.html',
+            error='Payment service is not configured. Contact support.',
+            key_id='',
+            order_id='',
+            amount=amount_display,
+            amount_minor_units=amount_minor_units,
+            currency=ADMIN_SUBSCRIPTION_CURRENCY,
+            name=user['name'],
+            email=user['email'],
+        )
+
+    amount_cents = ADMIN_SUBSCRIPTION_AMOUNT_USD_CENTS
+    try:
+        order = create_razorpay_order(user['id'], user['email'], amount_cents)
+    except Exception as exc:
+        print(f"Razorpay order error: {exc}")
+        return render_template(
+            'admin_payment.html',
+            error='Unable to start payment. Please try again later.',
+            key_id='',
+            order_id='',
+            amount=amount_display,
+            amount_minor_units=amount_minor_units,
+            currency=ADMIN_SUBSCRIPTION_CURRENCY,
+            name=user['name'],
+            email=user['email'],
+        )
+
+    session['pending_admin_order_id'] = order.get('id')
+    return render_template(
+        'admin_payment.html',
+        error=None,
+        key_id=RAZORPAY_KEY_ID,
+        order_id=order.get('id', ''),
+        amount=amount_display,
+        amount_minor_units=amount_minor_units,
+        currency=ADMIN_SUBSCRIPTION_CURRENCY,
+        name=user['name'],
+        email=user['email'],
+    )
+
+
+@app.route('/admin/payment/verify', methods=['POST'])
+def admin_payment_verify():
+    pending_admin_id = session.get('pending_admin_id')
+    expected_order_id = session.get('pending_admin_order_id')
+    if not pending_admin_id or not expected_order_id:
+        return jsonify({'status': 'error', 'message': 'No pending admin registration.'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    payment_id = payload.get('razorpay_payment_id')
+    order_id = payload.get('razorpay_order_id')
+    signature = payload.get('razorpay_signature')
+
+    if not payment_id or not order_id or not signature:
+        return jsonify({'status': 'error', 'message': 'Incomplete payment response.'}), 400
+
+    if order_id != expected_order_id:
+        return jsonify({'status': 'error', 'message': 'Order mismatch.'}), 400
+
+    if not RAZORPAY_KEY_SECRET:
+        return jsonify({'status': 'error', 'message': 'Payment verification unavailable.'}), 500
+
+    message = f"{order_id}|{payment_id}".encode('utf-8')
+    expected_signature = hmac.new(
+        RAZORPAY_KEY_SECRET.encode('utf-8'),
+        message,
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected_signature, signature):
+        return jsonify({'status': 'error', 'message': 'Payment verification failed.'}), 400
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn:
+            conn.execute(
+                "UPDATE users SET role = ? WHERE id = ? AND role = ?",
+                ('admin', pending_admin_id, 'admin_pending')
+            )
+            user = conn.execute(
+                "SELECT id, name, email, role FROM users WHERE id = ?",
+                (pending_admin_id,)
+            ).fetchone()
+
+            # record subscription
+            try:
+                conn.execute(
+                    "INSERT INTO subscriptions (user_id, provider, provider_id, status) VALUES (?, ?, ?, ?)",
+                    (pending_admin_id, 'razorpay', payment_id, 'active')
+                )
+            except Exception:
+                pass
+
+        session['role'] = user['role'] if user else 'admin'
+        session['user_id'] = user['id'] if user else pending_admin_id
+        session['user_name'] = user['name'] if user else None
+        session['user_email'] = user['email'] if user else session.get('pending_admin_email')
+        session.pop('pending_admin_id', None)
+        session.pop('pending_admin_email', None)
+        session.pop('pending_admin_order_id', None)
+
+        log_audit_event(
+            'admin_subscription_paid',
+            user_id=session.get('user_id'),
+            user_email=session.get('user_email'),
+            ip_address=request.remote_addr
+        )
+    finally:
+        if conn:
+            conn.close()
+
+    return jsonify({'status': 'success', 'redirect': url_for('subscription_success')})
 
 
 @app.route('/logout')
 def logout():
+    log_audit_event(
+        'logout',
+        user_id=session.get('user_id'),
+        user_email=session.get('user_email'),
+        ip_address=request.remote_addr
+    )
     session.clear()
     return redirect(url_for('login'))
 
@@ -106,10 +774,159 @@ def switch_mode(mode):
     return jsonify({'status': 'error', 'message': 'Invalid mode'})
 
 
+@app.route('/api/cameras', methods=['GET', 'POST'])
+def cameras():
+    if not require_login():
+        return jsonify({'status': 'error', 'message': 'Login required'}), 401
+
+    if request.method == 'GET':
+        conn = None
+        try:
+            conn = get_db_connection()
+            rows = conn.execute(
+                "SELECT id, name, source, default_mode, enabled, created_at, updated_at FROM camera_sources ORDER BY id"
+            ).fetchall()
+            return jsonify({'status': 'success', 'cameras': [dict(row) for row in rows]})
+        finally:
+            if conn:
+                conn.close()
+
+    if get_role() != 'admin':
+        return jsonify({'status': 'error', 'message': 'Admin access required'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get('name', '')).strip()
+    source = str(payload.get('source', '')).strip()
+    default_mode = payload.get('default_mode', 'tracking')
+    enabled = 1 if payload.get('enabled', True) else 0
+
+    if not name or not source:
+        return jsonify({'status': 'error', 'message': 'Name and source are required'}), 400
+    if default_mode not in ['tracking', 'heatmap']:
+        return jsonify({'status': 'error', 'message': 'Invalid default mode'}), 400
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO camera_sources (name, source, default_mode, enabled)
+                VALUES (?, ?, ?, ?)
+                """,
+                (name, source, default_mode, enabled)
+            )
+            camera_id = cursor.lastrowid
+            row = conn.execute(
+                "SELECT id, name, source, default_mode, enabled, created_at, updated_at FROM camera_sources WHERE id = ?",
+                (camera_id,)
+            ).fetchone()
+        log_audit_event(
+            'camera_created',
+            detail=f"camera_id={camera_id}",
+            user_id=session.get('user_id'),
+            user_email=session.get('user_email'),
+            ip_address=request.remote_addr
+        )
+        return jsonify({'status': 'success', 'camera': dict(row)})
+    except sqlite3.IntegrityError:
+        return jsonify({'status': 'error', 'message': 'Source already exists'}), 400
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/api/cameras/<int:camera_id>', methods=['PATCH', 'DELETE'])
+def camera_detail(camera_id):
+    if not require_login():
+        return jsonify({'status': 'error', 'message': 'Login required'}), 401
+    if get_role() != 'admin':
+        return jsonify({'status': 'error', 'message': 'Admin access required'}), 403
+
+    conn = None
+    try:
+        conn = get_db_connection()
+
+        if request.method == 'DELETE':
+            with conn:
+                conn.execute("DELETE FROM camera_sources WHERE id = ?", (camera_id,))
+            log_audit_event(
+                'camera_deleted',
+                detail=f"camera_id={camera_id}",
+                user_id=session.get('user_id'),
+                user_email=session.get('user_email'),
+                ip_address=request.remote_addr
+            )
+            return jsonify({'status': 'success'})
+
+        payload = request.get_json(silent=True) or {}
+        fields = []
+        values = []
+
+        if 'name' in payload:
+            name = str(payload.get('name', '')).strip()
+            if not name:
+                return jsonify({'status': 'error', 'message': 'Name cannot be empty'}), 400
+            fields.append('name = ?')
+            values.append(name)
+        if 'source' in payload:
+            source = str(payload.get('source', '')).strip()
+            if not source:
+                return jsonify({'status': 'error', 'message': 'Source cannot be empty'}), 400
+            fields.append('source = ?')
+            values.append(source)
+        if 'default_mode' in payload:
+            default_mode = payload.get('default_mode')
+            if default_mode not in ['tracking', 'heatmap']:
+                return jsonify({'status': 'error', 'message': 'Invalid default mode'}), 400
+            fields.append('default_mode = ?')
+            values.append(default_mode)
+        if 'enabled' in payload:
+            enabled = 1 if payload.get('enabled') else 0
+            fields.append('enabled = ?')
+            values.append(enabled)
+
+        if not fields:
+            return jsonify({'status': 'error', 'message': 'No fields to update'}), 400
+
+        fields.append('updated_at = CURRENT_TIMESTAMP')
+        values.append(camera_id)
+
+        with conn:
+            conn.execute(
+                f"UPDATE camera_sources SET {', '.join(fields)} WHERE id = ?",
+                values
+            )
+            row = conn.execute(
+                "SELECT id, name, source, default_mode, enabled, created_at, updated_at FROM camera_sources WHERE id = ?",
+                (camera_id,)
+            ).fetchone()
+
+        log_audit_event(
+            'camera_updated',
+            detail=f"camera_id={camera_id}",
+            user_id=session.get('user_id'),
+            user_email=session.get('user_email'),
+            ip_address=request.remote_addr
+        )
+        return jsonify({'status': 'success', 'camera': dict(row) if row else None})
+    except sqlite3.IntegrityError:
+        return jsonify({'status': 'error', 'message': 'Source already exists'}), 400
+    finally:
+        if conn:
+            conn.close()
+
+
 @app.route('/stop', methods=['POST'])
 def stop():
     if not require_login():
         return jsonify({'status': 'error', 'message': 'Login required'}), 401
+    log_audit_event(
+        'stop_processing',
+        user_id=session.get('user_id'),
+        user_email=session.get('user_email'),
+        ip_address=request.remote_addr
+    )
     stop_processing()
     return jsonify({'status': 'success'})
 
@@ -122,6 +939,12 @@ def update_settings():
         return jsonify({'status': 'error', 'message': 'Admin access required'}), 403
     payload = request.get_json(silent=True) or {}
     apply_settings(payload)
+    log_audit_event(
+        'update_settings',
+        user_id=session.get('user_id'),
+        user_email=session.get('user_email'),
+        ip_address=request.remote_addr
+    )
     return jsonify({'status': 'success'})
 
 
@@ -135,6 +958,8 @@ def get_stats():
         if source_key and source_key != current_source_key:
             cached = camera_stats_cache.get(source_key)
             if cached:
+                if should_snapshot(source_key):
+                    record_analytics_snapshot(cached.get('stats'), source_key, current_mode)
                 return jsonify(cached)
 
         stats = current_analysis.get_stats()
@@ -162,6 +987,10 @@ def get_stats():
         if source_key:
             camera_stats_cache[source_key] = payload
 
+        source_for_snapshot = source_key or current_source_key
+        if should_snapshot(source_for_snapshot):
+            record_analytics_snapshot(stats, source_for_snapshot, current_mode)
+
         if img_base64:
             return jsonify(payload)
 
@@ -171,6 +1000,79 @@ def get_stats():
     except Exception as e:
         print(f"Error getting stats: {e}")
         return jsonify({'status': 'error', 'message': str(e)})
+
+
+@app.route('/api/analytics_history', methods=['GET'])
+def analytics_history():
+    if not require_login():
+        return jsonify({'status': 'error', 'message': 'Login required'}), 401
+    limit = request.args.get('limit', '100')
+    source_key = request.args.get('source')
+    try:
+        limit = max(1, min(int(limit), 1000))
+    except ValueError:
+        limit = 100
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        if source_key:
+            rows = conn.execute(
+                """
+                SELECT id, captured_at, source_key, mode, frame_count, total_detections,
+                       unique_customers, active_detections, queue_length, crowd_level, duration_seconds
+                FROM analytics_history
+                WHERE source_key = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (source_key, limit)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT id, captured_at, source_key, mode, frame_count, total_detections,
+                       unique_customers, active_detections, queue_length, crowd_level, duration_seconds
+                FROM analytics_history
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,)
+            ).fetchall()
+        return jsonify({'status': 'success', 'history': [dict(row) for row in rows]})
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/api/audit_logs', methods=['GET'])
+def audit_logs():
+    if not require_login():
+        return jsonify({'status': 'error', 'message': 'Login required'}), 401
+    if get_role() != 'admin':
+        return jsonify({'status': 'error', 'message': 'Admin access required'}), 403
+    limit = request.args.get('limit', '200')
+    try:
+        limit = max(1, min(int(limit), 1000))
+    except ValueError:
+        limit = 200
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        rows = conn.execute(
+            """
+            SELECT id, created_at, user_id, user_email, action, detail, ip_address
+            FROM audit_logs
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,)
+        ).fetchall()
+        return jsonify({'status': 'success', 'logs': [dict(row) for row in rows]})
+    finally:
+        if conn:
+            conn.close()
 
 
 @app.route('/get_last_heatmap', methods=['GET'])
@@ -225,45 +1127,209 @@ def build_report_summary():
     }
 
 
+def parse_sqlite_timestamp(ts_value):
+    if not ts_value:
+        return None
+    if isinstance(ts_value, (int, float)):
+        return float(ts_value)
+    try:
+        return time.mktime(time.strptime(ts_value, '%Y-%m-%d %H:%M:%S'))
+    except Exception:
+        return None
+
+
+def fetch_history_rows(report_range, source_key=None):
+    range_map = {
+        'daily': '-1 day',
+        'weekly': '-7 day'
+    }
+    range_key = report_range if report_range in range_map else 'daily'
+    conn = None
+    try:
+        conn = get_db_connection()
+        if source_key:
+            rows = conn.execute(
+                """
+                SELECT id, captured_at, source_key, mode, frame_count, total_detections,
+                       unique_customers, active_detections, queue_length, crowd_level, duration_seconds
+                FROM analytics_history
+                WHERE source_key = ?
+                  AND captured_at >= datetime('now', ?)
+                ORDER BY captured_at ASC
+                """,
+                (source_key, range_map[range_key])
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT id, captured_at, source_key, mode, frame_count, total_detections,
+                       unique_customers, active_detections, queue_length, crowd_level, duration_seconds
+                FROM analytics_history
+                WHERE captured_at >= datetime('now', ?)
+                ORDER BY captured_at ASC
+                """,
+                (range_map[range_key],)
+            ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        if conn:
+            conn.close()
+
+
+def build_report_summary_from_history(rows):
+    if not rows:
+        return {
+            'duration': 0,
+            'peak_active': 0,
+            'peak_queue': 0,
+            'peak_time': None,
+            'avg_active': 0,
+            'avg_queue': 0,
+            'unique_customers': 0,
+            'total_detections': 0,
+            'frame_count': 0,
+            'latest_crowd': 0,
+            'latest_queue': 0
+        }
+
+    active_values = [row.get('active_detections') or 0 for row in rows]
+    queue_values = [row.get('queue_length') or 0 for row in rows]
+    peak_index = max(range(len(rows)), key=lambda i: active_values[i])
+    peak_time = rows[peak_index].get('captured_at')
+    first_ts = parse_sqlite_timestamp(rows[0].get('captured_at'))
+    last_ts = parse_sqlite_timestamp(rows[-1].get('captured_at'))
+    duration = (last_ts - first_ts) if first_ts and last_ts and last_ts >= first_ts else 0
+
+    return {
+        'duration': duration,
+        'peak_active': max(active_values),
+        'peak_queue': max(queue_values),
+        'peak_time': peak_time,
+        'avg_active': (sum(active_values) / len(active_values)) if active_values else 0,
+        'avg_queue': (sum(queue_values) / len(queue_values)) if queue_values else 0,
+        'unique_customers': max(row.get('unique_customers') or 0 for row in rows),
+        'total_detections': max(row.get('total_detections') or 0 for row in rows),
+        'frame_count': max(row.get('frame_count') or 0 for row in rows),
+        'latest_crowd': rows[-1].get('crowd_level') or 0,
+        'latest_queue': rows[-1].get('queue_length') or 0
+    }
+
+
+def build_alert_summary(max_alerts=10):
+    alerts = current_analysis.alerts or []
+    level_counts = {'warning': 0, 'error': 0}
+    for alert in alerts:
+        level = alert.get('level')
+        if level in level_counts:
+            level_counts[level] += 1
+    return {
+        'total': len(alerts),
+        'warning': level_counts['warning'],
+        'error': level_counts['error'],
+        'recent': alerts[-max_alerts:]
+    }
+
+
+def format_alert_time(ts):
+    try:
+        return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(ts))
+    except Exception:
+        return 'N/A'
+
+
 @app.route('/export_report', methods=['GET'])
 def export_report():
     if not require_login():
         return redirect(url_for('login'))
     report_range = request.args.get('range', 'daily')
     fmt = request.args.get('format', 'csv')
-    stats = current_analysis.get_stats()
-    summary = build_report_summary()
+    source_key = request.args.get('source')
+    history_rows = fetch_history_rows(report_range, source_key)
+    use_history = len(history_rows) > 0
+
+    if use_history:
+        summary = build_report_summary_from_history(history_rows)
+        stats = {
+            'uniqueCustomers': summary['unique_customers'],
+            'totalDetections': summary['total_detections'],
+            'frameCount': summary['frame_count'],
+            'crowdLevel': summary['latest_crowd'],
+            'queueLength': summary['latest_queue']
+        }
+        alert_summary = {'total': 0, 'warning': 0, 'error': 0, 'recent': []}
+    else:
+        stats = current_analysis.get_stats()
+        summary = build_report_summary()
+        alert_summary = build_alert_summary()
 
     if fmt == 'pdf':
-        fig, ax = plt.subplots(figsize=(10, 5))
-        history = current_analysis.metric_history
-        if history:
-            timestamps = [entry['ts'] for entry in history]
-            start_ts = timestamps[0]
-            rel_time = [(ts - start_ts) / 60 for ts in timestamps]
-            active_series = [entry['active'] for entry in history]
-            queue_series = [entry['queue'] for entry in history]
-            ax.plot(rel_time, active_series, label='Active', color='#2563eb')
-            ax.plot(rel_time, queue_series, label='Queue', color='#f97316')
-            ax.set_xlabel('Minutes')
-            ax.set_ylabel('People')
-            ax.legend()
-            ax.grid(alpha=0.2)
+        fig = plt.figure(figsize=(11, 6.5))
+        gs = fig.add_gridspec(2, 2, height_ratios=[3.2, 1.3], width_ratios=[1.35, 1])
+        ax = fig.add_subplot(gs[0, :])
+        summary_ax = fig.add_subplot(gs[1, 0])
+        alerts_ax = fig.add_subplot(gs[1, 1])
+        summary_ax.axis('off')
+        alerts_ax.axis('off')
+        if use_history:
+            timestamps = [parse_sqlite_timestamp(row.get('captured_at')) for row in history_rows]
+            timestamps = [ts for ts in timestamps if ts is not None]
+            if timestamps:
+                start_ts = timestamps[0]
+                rel_time = [(ts - start_ts) / 60 for ts in timestamps]
+                active_series = [row.get('active_detections') or 0 for row in history_rows]
+                queue_series = [row.get('queue_length') or 0 for row in history_rows]
+                ax.plot(rel_time, active_series, label='Active', color='#2563eb')
+                ax.plot(rel_time, queue_series, label='Queue', color='#f97316')
+        else:
+            history = current_analysis.metric_history
+            if history:
+                timestamps = [entry['ts'] for entry in history]
+                start_ts = timestamps[0]
+                rel_time = [(ts - start_ts) / 60 for ts in timestamps]
+                active_series = [entry['active'] for entry in history]
+                queue_series = [entry['queue'] for entry in history]
+                ax.plot(rel_time, active_series, label='Active', color='#2563eb')
+                ax.plot(rel_time, queue_series, label='Queue', color='#f97316')
 
-        fig.suptitle(f"Store Analytics Report ({report_range.title()})", fontsize=14, fontweight='bold')
-        text_block = (
-            f"Duration: {summary['duration']:.1f}s\n"
-            f"Unique Customers: {stats['uniqueCustomers']}\n"
-            f"Total Detections: {stats['totalDetections']}\n"
-            f"Peak Active: {summary['peak_active']} @ {summary['peak_time']}\n"
-            f"Avg Active: {summary['avg_active']:.1f}\n"
-            f"Peak Queue: {summary['peak_queue']}\n"
-            f"Avg Queue: {summary['avg_queue']:.1f}\n"
-            f"Avg Detections per Customer: {stats['totalDetections'] / max(stats['uniqueCustomers'], 1):.2f}"
-        )
-        fig.text(0.02, 0.02, text_block, fontsize=9, va='bottom')
+        ax.set_xlabel('Minutes')
+        ax.set_ylabel('People')
+        ax.legend()
+        ax.grid(alpha=0.2)
+
+        ax.set_title('Live Activity Over Time', fontsize=12, fontweight='bold')
+
+        fig.suptitle(f"Store Analytics Report ({report_range.title()})", fontsize=15, fontweight='bold')
+        data_source_label = 'History snapshots' if use_history else 'Live session'
+        avg_det_per_customer = stats['totalDetections'] / max(stats['uniqueCustomers'], 1)
+        summary_lines = [
+            f"Data Source: {data_source_label}",
+            f"Duration: {summary['duration']:.1f}s",
+            f"Unique Customers: {stats['uniqueCustomers']}",
+            f"Total Detections: {stats['totalDetections']}",
+            f"Crowd Level (latest): {stats['crowdLevel']}",
+            f"Queue Length (latest): {stats['queueLength']}",
+            f"Peak Active: {summary['peak_active']} @ {summary['peak_time']}",
+            f"Avg Active: {summary['avg_active']:.1f}",
+            f"Peak Queue: {summary['peak_queue']}",
+            f"Avg Queue: {summary['avg_queue']:.1f}",
+            f"Avg Detections per Customer: {avg_det_per_customer:.2f}"
+        ]
+        summary_ax.text(0.0, 1.0, "Summary", fontsize=11, fontweight='bold', va='top')
+        summary_ax.text(0.0, 0.9, "\n".join(summary_lines), fontsize=9.5, va='top')
+        if use_history:
+            alert_lines = ["Alerts: not available for history reports"]
+        else:
+            alert_lines = [
+                f"Alerts Total: {alert_summary['total']} (warning: {alert_summary['warning']}, error: {alert_summary['error']})"
+            ]
+            for alert in alert_summary['recent'][-5:]:
+                alert_lines.append(
+                    f"{format_alert_time(alert.get('ts'))} | {alert.get('level')} | {alert.get('message')}"
+                )
+        alerts_ax.text(0.0, 1.0, "Alerts", fontsize=11, fontweight='bold', va='top')
+        alerts_ax.text(0.0, 0.9, "\n".join(alert_lines), fontsize=9.2, va='top')
         buf = io.BytesIO()
-        fig.tight_layout(rect=[0, 0.12, 1, 0.95])
+        fig.tight_layout(rect=[0.02, 0.02, 0.98, 0.94])
         fig.savefig(buf, format='pdf')
         plt.close(fig)
         buf.seek(0)
@@ -274,9 +1340,12 @@ def export_report():
     writer = csv.writer(output)
     writer.writerow([f"Store Analytics Report ({report_range.title()})"])
     writer.writerow([])
+    writer.writerow(["Data Source", "History snapshots" if use_history else "Live session"])
     writer.writerow(["Duration (s)", f"{summary['duration']:.1f}"])
     writer.writerow(["Unique Customers", stats['uniqueCustomers']])
     writer.writerow(["Total Detections", stats['totalDetections']])
+    writer.writerow(["Crowd Level (latest)", stats['crowdLevel']])
+    writer.writerow(["Queue Length (latest)", stats['queueLength']])
     writer.writerow(["Peak Active", summary['peak_active']])
     writer.writerow(["Peak Queue", summary['peak_queue']])
     writer.writerow(["Peak Time", summary['peak_time'] or 'N/A'])
@@ -284,16 +1353,71 @@ def export_report():
     writer.writerow(["Avg Queue", f"{summary['avg_queue']:.2f}"])
     writer.writerow(["Avg Detections per Customer", f"{stats['totalDetections'] / max(stats['uniqueCustomers'], 1):.2f}"])
     writer.writerow([])
-    writer.writerow(["Time (s)", "Active", "Queue"])
 
-    if current_analysis.metric_history:
-        start_ts = current_analysis.metric_history[0]['ts']
-        for entry in current_analysis.metric_history:
-            writer.writerow([f"{entry['ts'] - start_ts:.1f}", entry['active'], entry['queue']])
+    if use_history:
+        writer.writerow([
+            "Captured At",
+            "Active",
+            "Queue",
+            "Crowd Level",
+            "Queue Length",
+            "Unique Customers",
+            "Total Detections",
+            "Frame Count",
+            "Duration (s)",
+            "Source",
+            "Mode"
+        ])
+        for row in history_rows:
+            writer.writerow([
+                row.get('captured_at'),
+                row.get('active_detections'),
+                row.get('queue_length'),
+                row.get('crowd_level'),
+                row.get('queue_length'),
+                row.get('unique_customers'),
+                row.get('total_detections'),
+                row.get('frame_count'),
+                row.get('duration_seconds'),
+                row.get('source_key'),
+                row.get('mode')
+            ])
+        writer.writerow([])
+        writer.writerow(["Alerts", "Not available for history reports"])
+    else:
+        writer.writerow(["Alerts Total", alert_summary['total']])
+        writer.writerow(["Alerts Warning", alert_summary['warning']])
+        writer.writerow(["Alerts Error", alert_summary['error']])
+        writer.writerow([])
+        writer.writerow(["Time (s)", "Active", "Queue", "Crowd Level", "Queue Length"])
+
+        if current_analysis.metric_history:
+            start_ts = current_analysis.metric_history[0]['ts']
+            for entry in current_analysis.metric_history:
+                writer.writerow([
+                    f"{entry['ts'] - start_ts:.1f}",
+                    entry['active'],
+                    entry['queue'],
+                    entry['active'],
+                    entry['queue']
+                ])
+
+        writer.writerow([])
+        writer.writerow(["Alert Time", "Level", "Type", "Message"])
+        for alert in alert_summary['recent']:
+            writer.writerow([
+                format_alert_time(alert.get('ts')),
+                alert.get('level'),
+                alert.get('type'),
+                alert.get('message')
+            ])
 
     csv_bytes = io.BytesIO(output.getvalue().encode('utf-8'))
     csv_bytes.seek(0)
     filename = f"report_{report_range}_{int(time.time())}.csv"
     return send_file(csv_bytes, mimetype='text/csv', as_attachment=True, download_name=filename)
 if __name__ == "__main__":
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    debug_mode = os.environ.get('FLASK_DEBUG', '0').lower() in ('1', 'true', 'yes', 'on')
+    host = os.environ.get('FLASK_HOST', '0.0.0.0')
+    port = int(os.environ.get('PORT', os.environ.get('FLASK_PORT', '5000')))
+    app.run(debug=debug_mode, host=host, port=port)

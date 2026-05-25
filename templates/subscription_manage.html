@@ -15,14 +15,36 @@
             --text-secondary: #b5c3d6;
             --muted: #7f93ab;
         }
-        body { font-family: 'Work Sans', sans-serif; background: var(--bg); color: var(--text-primary); display:flex; align-items:center; justify-content:center; min-height:100vh; }
+        body { font-family: 'Work Sans', sans-serif; background: var(--bg); color: var(--text-primary); display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; }
         .card { width: min(680px, 100%); background:var(--panel); border:1px solid var(--panel-border); padding:28px; border-radius:14px; }
         h1 { font-family: 'Space Grotesk', sans-serif; margin-bottom:8px }
         p { color:var(--text-secondary); margin-bottom:12px }
         .meta { background: rgba(8,16,24,0.6); padding:12px; border-radius:10px; border:1px solid rgba(148,163,184,0.08); margin-bottom:14px }
         .actions { display:flex; gap:12px }
-        button { background:var(--primary); color:white; border:none; padding:10px 14px; border-radius:10px; cursor:pointer }
+        button { background:var(--primary); color:white; border:none; padding:10px 14px; border-radius:10px; cursor:pointer; font-size:16px }
         form { display:inline }
+
+        @media (max-width: 600px) {
+            body {
+                align-items: flex-start;
+                padding: 16px;
+            }
+
+            .card {
+                padding: 20px;
+                border-radius: 16px;
+            }
+
+            .actions,
+            form,
+            button {
+                width: 100%;
+            }
+
+            .actions {
+                flex-direction: column;
+            }
+        }
     </style>
 </head>
 <body>

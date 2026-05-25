@@ -13,7 +13,7 @@ stop_processing_flag = threading.Event()
 cap = None
 
 MODEL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-MODEL_NAME = 'yolo11s.pt'
+MODEL_NAME = os.environ.get('MODEL_WEIGHTS', 'yolo11s.pt')
 model = None
 model_lock = threading.Lock()
 
@@ -72,12 +72,19 @@ def init_model():
     try:
         load_model(MODEL_NAME)
     except Exception:
-        MODEL_NAME = 'yolov8s.pt'
-        load_model(MODEL_NAME)
+        fallback_name = os.environ.get('MODEL_FALLBACK_WEIGHTS', 'yolov8s.pt')
+        if fallback_name != MODEL_NAME:
+            MODEL_NAME = fallback_name
+            load_model(MODEL_NAME)
+        else:
+            raise
 
 
-init_model()
-print(f"✅ Model loaded: {MODEL_NAME}")
+if os.environ.get('DISABLE_MODEL_INIT') != '1':
+    init_model()
+    print(f"✅ Model loaded: {MODEL_NAME}")
+else:
+    print("⚠️ Model init skipped because DISABLE_MODEL_INIT=1")
 
 
 def get_centered_zone(frame_shape, width_ratio, height_ratio, anchor='bottom', offset_ratio=0.0):
@@ -286,14 +293,6 @@ def generate_frames(video_source):
 
         if RESTRICTED_ENABLED:
             restricted_zone = get_zone_from_rect(frame.shape, RESTRICTED_ZONE_RECT)
-            if not restricted_zone:
-                restricted_zone = get_centered_zone(
-                    frame.shape,
-                    RESTRICTED_ZONE_WIDTH,
-                    RESTRICTED_ZONE_HEIGHT,
-                    anchor='top',
-                    offset_ratio=RESTRICTED_ZONE_TOP_OFFSET
-                )
             restricted_count = count_in_zone(centers, restricted_zone)
         
         current_analysis.active_detections = active
@@ -330,14 +329,6 @@ def generate_frames(video_source):
         draw_text(frame, f"Active: {active} | Total Unique: {len(current_analysis.all_track_ids)} | Frame: {current_analysis.frame_count}", (10, 50), 0.5, (0,255,255))
         source_fps_label = f"{source_fps:.1f}" if source_fps is not None else "N/A"
         draw_text(frame, f"FPS: {current_fps:.1f} | Source FPS: {source_fps_label} | Target FPS: {TARGET_FPS}", (10, 75), 0.5, (200,200,200))
-        if queue_zone:
-            qx1, qy1, qx2, qy2 = queue_zone
-            cv2.rectangle(frame, (qx1, qy1), (qx2, qy2), (0, 255, 255), 2)
-            draw_text(frame, f"Queue: {queue_count}", (qx1 + 5, qy1 - 8), 0.5, (0, 255, 255), 2)
-        if restricted_zone:
-            rx1, ry1, rx2, ry2 = restricted_zone
-            cv2.rectangle(frame, (rx1, ry1), (rx2, ry2), (0, 0, 255), 2)
-            draw_text(frame, "Restricted", (rx1 + 5, ry1 - 8), 0.5, (0, 0, 255), 2)
         
         ret, buffer = cv2.imencode('.jpg', frame)
         if not ret:
@@ -470,14 +461,6 @@ def generate_heatmap(video_source):
 
         if RESTRICTED_ENABLED:
             restricted_zone = get_zone_from_rect(frame.shape, RESTRICTED_ZONE_RECT)
-            if not restricted_zone:
-                restricted_zone = get_centered_zone(
-                    frame.shape,
-                    RESTRICTED_ZONE_WIDTH,
-                    RESTRICTED_ZONE_HEIGHT,
-                    anchor='top',
-                    offset_ratio=RESTRICTED_ZONE_TOP_OFFSET
-                )
             restricted_count = count_in_zone(centers, restricted_zone)
         
         current_analysis.active_detections = detection_count
@@ -520,14 +503,6 @@ def generate_heatmap(video_source):
         draw_text(output, f"Frame: {current_analysis.frame_count} | In frame: {detection_count} | Total Detections: {current_analysis.total_detections:,}", (10, 50), 0.5, (0,255,255))
         source_fps_label = f"{source_fps:.1f}" if source_fps is not None else "N/A"
         draw_text(output, f"FPS: {current_fps:.1f} | Source FPS: {source_fps_label} | Target FPS: {TARGET_FPS}", (10, 75), 0.5, (200,200,200))
-        if queue_zone:
-            qx1, qy1, qx2, qy2 = queue_zone
-            cv2.rectangle(output, (qx1, qy1), (qx2, qy2), (0, 255, 255), 2)
-            draw_text(output, f"Queue: {queue_count}", (qx1 + 5, qy1 - 8), 0.5, (0, 255, 255), 2)
-        if restricted_zone:
-            rx1, ry1, rx2, ry2 = restricted_zone
-            cv2.rectangle(output, (rx1, ry1), (rx2, ry2), (0, 0, 255), 2)
-            draw_text(output, "Restricted", (rx1 + 5, ry1 - 8), 0.5, (0, 0, 255), 2)
         
         ret, buffer = cv2.imencode('.jpg', output)
         if not ret:
