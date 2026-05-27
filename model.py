@@ -523,6 +523,8 @@ def generate_heatmap(video_source):
     save_heatmap_snapshot(current_analysis.heatmap_accumulator, last_frame, HEATMAP_BLUR)
 
 
+
+
 def apply_settings(payload):
     global CONFIDENCE_THRESHOLD, IOU_THRESHOLD, IMG_SIZE, TRAIL_LENGTH
     global HEATMAP_DECAY, HEATMAP_INTENSITY, HEATMAP_OPACITY, HEATMAP_BLUR

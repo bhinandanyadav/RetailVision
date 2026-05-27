@@ -36,6 +36,89 @@
             --badge-border: rgba(14, 165, 233, 0.25);
         }
 
+        .skip-link {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            background: #111827;
+            color: #ffffff;
+            padding: 8px 12px;
+            border-radius: 8px;
+            text-decoration: none;
+            transform: translateY(-200%);
+            transition: transform 0.2s ease;
+            z-index: 2000;
+        }
+
+        .skip-link:focus {
+            transform: translateY(0);
+            outline: 2px solid #f8fafc;
+            outline-offset: 2px;
+        }
+
+        .a11y-toolbar {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: 16px;
+            background: linear-gradient(90deg, #f6d365 0%, #fda085 100%);
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.35);
+            z-index: 2001;
+            cursor: move;
+        }
+
+        .a11y-toolbar.is-dragging {
+            user-select: none;
+        }
+
+        .a11y-handle {
+            background: rgba(17, 24, 39, 0.12);
+            border-color: rgba(17, 24, 39, 0.35);
+            cursor: grab;
+        }
+
+        .a11y-toolbar.is-dragging .a11y-handle {
+            cursor: grabbing;
+        }
+
+        .a11y-btn {
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            color: #111827;
+            font-weight: 700;
+            padding: 6px 10px;
+            border-radius: 10px;
+            cursor: pointer;
+            min-width: 40px;
+            text-align: center;
+        }
+
+        .a11y-btn.is-toggle[aria-pressed="true"] {
+            background: rgba(17, 24, 39, 0.15);
+            border-color: rgba(17, 24, 39, 0.4);
+        }
+
+        .a11y-btn:focus-visible {
+            outline: 2px solid #0f172a;
+            outline-offset: 2px;
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
         [data-theme="light"] {
             --primary: #2563eb;
             --primary-dark: #1e40af;
@@ -186,6 +269,14 @@
 
         .nav-links a:hover::after {
             width: 100%;
+        }
+
+        a:focus-visible,
+        button:focus-visible,
+        input:focus-visible,
+        select:focus-visible {
+            outline: 2px solid rgba(14, 165, 233, 0.7);
+            outline-offset: 2px;
         }
 
         .header-actions {
@@ -410,6 +501,12 @@
             cursor: pointer;
             transition: all 0.3s ease;
             text-align: center;
+        }
+
+        .input-option:focus-visible,
+        .upload-dropzone:focus-visible {
+            outline: 2px solid rgba(14, 165, 233, 0.8);
+            outline-offset: 2px;
         }
 
         .input-option:hover {
@@ -748,6 +845,7 @@
             cursor: pointer;
             border: 2px solid transparent;
             transition: all 0.3s ease;
+            position: relative;
         }
 
         .mode-option:hover {
@@ -760,7 +858,9 @@
         }
 
         .mode-option input {
-            display: none;
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
         }
 
         .mode-radio {
@@ -1724,6 +1824,14 @@
     </style>
 </head>
 <body>
+    <a class="skip-link" href="#main">Skip to main content</a>
+    <div class="a11y-toolbar" id="a11yToolbar" role="toolbar" aria-label="Accessibility">
+        <button class="a11y-btn a11y-handle" id="toolbarHandle" type="button" aria-label="Move accessibility toolbar" title="Move">Move</button>
+        <button class="a11y-btn" id="fontDecrease" type="button" aria-label="Decrease text size">A-</button>
+        <button class="a11y-btn" id="fontReset" type="button" aria-label="Reset text size">A</button>
+        <button class="a11y-btn" id="fontIncrease" type="button" aria-label="Increase text size">A+</button>
+        <button class="a11y-btn is-toggle" id="screenReaderToggle" type="button" aria-pressed="false">Screen Reader</button>
+    </div>
     <div class="bg-animation"></div>
 
     <!-- Header -->
@@ -1736,21 +1844,23 @@
                     <span>Motion Tracking & Heatmap</span>
                 </div>
             </div>
-            <nav class="nav-links">
+            <nav class="nav-links" aria-label="Primary">
                 <a href="#input">Input</a>
                 <a href="#previewSection">Preview</a>
                 <a href="#dataHub">Data</a>
+                {% if user_role == 'admin' %}
                 <a href="#settings">Settings</a>
+                {% endif %}
                 {% if user_role == 'admin' %}
                 <a href="{{ url_for('subscription_manage') }}">Manage Subscription</a>
                 {% endif %}
             </nav>
             <div class="header-actions">
                 <span class="role-badge" id="roleBadge">Role</span>
-                <button class="theme-toggle" id="themeToggle" type="button">Light</button>
+                <button class="theme-toggle" id="themeToggle" type="button" aria-pressed="false">Light</button>
                 <div class="status-badge">
                     <div class="status-dot"></div>
-                    <span id="headerStatusText">System Ready</span>
+                    <span id="headerStatusText" role="status" aria-live="polite">System Ready</span>
                 </div>
                 <a class="theme-toggle" href="/logout">Logout</a>
             </div>
@@ -1758,7 +1868,7 @@
     </header>
 
     <!-- Main Content -->
-    <main class="main-container">
+    <main class="main-container" id="main">
         <!-- Hero Section -->
         <section class="hero">
             <h1>Real-Time Customer Intelligence</h1>
@@ -1794,12 +1904,12 @@
             <p>Choose how you want to provide video input for analysis</p>
 
             <div class="input-options">
-                <div class="input-option" id="webcamOption" onclick="selectInputOption('webcam')">
+                <div class="input-option" id="webcamOption" role="button" tabindex="0" aria-pressed="false" onclick="selectInputOption('webcam')">
                     <div class="input-option-icon">📷</div>
                     <h4>Live Camera</h4>
                     <p>Use your CCTV camera for real-time detection and tracking</p>
                 </div>
-                <div class="input-option" id="videoOption" onclick="selectInputOption('video')">
+                <div class="input-option" id="videoOption" role="button" tabindex="0" aria-pressed="false" onclick="selectInputOption('video')">
                     <div class="input-option-icon">🎬</div>
                     <h4>Upload Video</h4>
                     <p>Upload a recorded video file for analysis</p>
@@ -1817,13 +1927,13 @@
 
             <!-- File Upload Area -->
             <div class="upload-area" id="uploadArea">
-                <div class="upload-dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+                <div class="upload-dropzone" id="dropzone" role="button" tabindex="0" aria-describedby="uploadHelp" onclick="document.getElementById('fileInput').click()">
                     <div class="upload-dropzone-icon">📁</div>
                     <h4>Drag & Drop Video File</h4>
                     <p>or click to browse</p>
-                    <span class="supported-formats">Supported: .mp4, .avi, .mov, .mkv, .wmv, .flv</span>
+                    <span class="supported-formats" id="uploadHelp">Supported: .mp4, .avi, .mov, .mkv, .wmv, .flv</span>
                 </div>
-                <input type="file" class="file-input" id="fileInput" accept=".mp4,.avi,.mov,.mkv,.wmv,.flv" onchange="handleFileSelect(event)">
+                <input type="file" class="file-input" id="fileInput" accept=".mp4,.avi,.mov,.mkv,.wmv,.flv" aria-describedby="uploadHelp" onchange="handleFileSelect(event)">
                 
                 <div class="selected-file" id="selectedFile">
                     <div class="file-info">
@@ -1858,7 +1968,7 @@
 
             <div class="preview-content">
                 <div class="video-container">
-                    <img class="video-display" id="videoStream" src="" style="display: none;" />
+                    <img class="video-display" id="videoStream" src="" alt="Live stream" style="display: none;" />
                     <video class="video-display" id="videoPreview" controls style="display: none;"></video>
                     <div class="camera-placeholder" id="streamPlaceholder" style="width: 100%; margin: 0;">
                         <div class="camera-placeholder-icon">📹</div>
@@ -1934,7 +2044,7 @@
             </div>
             <div class="alerts-panel" id="alertsPanel">
                 <h4>🚨 Live Alerts</h4>
-                <div class="alerts-list" id="alertsList">
+                <div class="alerts-list" id="alertsList" aria-live="polite">
                     <div class="alert-item">No alerts yet.</div>
                 </div>
             </div>
@@ -2099,6 +2209,7 @@
         </div>
 
         <!-- Settings Section -->
+        {% if user_role == 'admin' %}
         <section id="settings" class="settings-section">
             <h3>⚙️ Detection Settings</h3>
 
@@ -2284,6 +2395,7 @@
                 </div>
             </div>
         </section>
+        {% endif %}
     </main>
 
     <!-- Footer -->
@@ -2301,7 +2413,7 @@
     </footer>
 
     <!-- Processing Overlay -->
-    <div class="processing-overlay" id="processingOverlay">
+    <div class="processing-overlay" id="processingOverlay" role="alert" aria-live="assertive">
         <div class="processing-content">
             <div class="processing-spinner"></div>
             <h3>Processing Video...</h3>
@@ -2310,7 +2422,7 @@
     </div>
 
     <!-- Toast Notification -->
-    <div class="toast" id="toast">
+    <div class="toast" id="toast" role="status" aria-live="polite">
         <span class="toast-icon">✅</span>
         <span class="toast-message" id="toastMessage">Success!</span>
     </div>
@@ -2337,6 +2449,17 @@
             roleBadge.textContent = userRole === 'admin' ? 'Admin' : 'Viewer';
         }
 
+        if (userRole !== 'admin') {
+            const settingsLink = document.querySelector('.nav-links a[href="#settings"]');
+            if (settingsLink) {
+                settingsLink.remove();
+            }
+            const settingsSection = document.getElementById('settings');
+            if (settingsSection) {
+                settingsSection.remove();
+            }
+        }
+
         const themeToggle = document.getElementById('themeToggle');
         const savedTheme = localStorage.getItem('uiTheme');
         if (savedTheme === 'light') {
@@ -2349,6 +2472,7 @@
             const isLight = document.documentElement.getAttribute('data-theme') === 'light';
             if (themeToggle) {
                 themeToggle.textContent = isLight ? 'Dark' : 'Light';
+                themeToggle.setAttribute('aria-pressed', isLight ? 'true' : 'false');
             }
         }
 
@@ -2368,11 +2492,19 @@
 
         updateThemeLabel();
 
-        if (userRole !== 'admin') {
-            const settingsSection = document.getElementById('settings');
-            if (settingsSection) {
-                settingsSection.style.display = 'none';
+        function enableKeyboardActivation(element, handler) {
+            if (!element || typeof handler !== 'function') {
+                return;
             }
+            element.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    handler();
+                }
+            });
+        }
+
+        if (userRole !== 'admin') {
             const zoneEditor = document.querySelector('.zone-editor');
             if (zoneEditor) {
                 zoneEditor.style.display = 'none';
@@ -2469,8 +2601,8 @@
         }
 
         function updateSourceKey() {
-            if (selectedInput === 'video' && videoFile) {
-                currentSourceKey = videoFile.name;
+            if (selectedInput === 'video' && videoFile && videoFile.sourceKey) {
+                currentSourceKey = videoFile.sourceKey;
                 return;
             }
             currentSourceKey = selectedCamera;
@@ -2750,6 +2882,8 @@
             document.getElementById('webcamOption').classList.remove('active');
             document.getElementById('videoOption').classList.remove('active');
             document.getElementById(option + 'Option').classList.add('active');
+            document.getElementById('webcamOption').setAttribute('aria-pressed', option === 'webcam' ? 'true' : 'false');
+            document.getElementById('videoOption').setAttribute('aria-pressed', option === 'video' ? 'true' : 'false');
             
             // Show/Hide appropriate areas
             document.getElementById('uploadArea').classList.remove('active');
@@ -2769,12 +2903,9 @@
         }
 
         // File Handling
-        function handleFileSelect(event) {
+        async function handleFileSelect(event) {
             const file = event.target.files[0];
             if (file) {
-                videoFile = file;
-                updateSourceKey();
-                loadZonesForCamera(currentSourceKey);
                 document.getElementById('fileName').textContent = file.name;
                 document.getElementById('fileSize').textContent = formatFileSize(file.size);
                 document.getElementById('selectedFile').classList.add('active');
@@ -2783,8 +2914,21 @@
                 document.querySelector('.preview-section').classList.add('active');
                 const videoPreview = document.getElementById('videoPreview');
                 videoPreview.src = URL.createObjectURL(file);
-                
-                showToast('✅ Video loaded successfully!', 'success');
+
+                showToast('⏳ Uploading video...', 'warning');
+                const uploadResult = await uploadVideoFile(file);
+                if (!uploadResult) {
+                    removeFile();
+                    return;
+                }
+
+                videoFile = {
+                    file,
+                    sourceKey: uploadResult.source
+                };
+                updateSourceKey();
+                loadZonesForCamera(currentSourceKey);
+                showToast('✅ Video uploaded successfully!', 'success');
                 updateStartButton();
             }
         }
@@ -2797,6 +2941,28 @@
             updateSourceKey();
             loadZonesForCamera(currentSourceKey);
             updateStartButton();
+        }
+
+        async function uploadVideoFile(file) {
+            const formData = new FormData();
+            formData.append('video', file);
+
+            try {
+                const response = await fetch('/upload_video', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (data.status !== 'success' || !data.source) {
+                    showToast(data.message || 'Upload failed.', 'error');
+                    return null;
+                }
+                return data;
+            } catch (error) {
+                console.error('Upload error:', error);
+                showToast('Upload failed.', 'error');
+                return null;
+            }
         }
 
         function formatFileSize(bytes) {
@@ -2818,6 +2984,10 @@
 
         // Drag and Drop
         const dropzone = document.getElementById('dropzone');
+
+        enableKeyboardActivation(document.getElementById('webcamOption'), () => selectInputOption('webcam'));
+        enableKeyboardActivation(document.getElementById('videoOption'), () => selectInputOption('video'));
+        enableKeyboardActivation(dropzone, () => document.getElementById('fileInput').click());
         
         dropzone.addEventListener('dragover', (e) => {
             e.preventDefault();
@@ -2834,16 +3004,8 @@
             
             const files = e.dataTransfer.files;
             if (files.length > 0) {
-                const file = files[0];
-                const validExtensions = ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv'];
-                const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-                
-                if (validExtensions.includes(ext)) {
-                    document.getElementById('fileInput').files = files;
-                    handleFileSelect({ target: { files: files } });
-                } else {
-                    showToast('❌ Invalid file format!', 'error');
-                }
+                document.getElementById('fileInput').files = files;
+                handleFileSelect({ target: { files: files } });
             }
         });
 
@@ -2911,8 +3073,8 @@
                         document.getElementById('videoStream').src = '';
                         setTimeout(() => {
                             let source = '0';
-                            if (selectedInput === 'video' && videoFile) {
-                                source = videoFile.name;
+                            if (selectedInput === 'video' && videoFile && videoFile.sourceKey) {
+                                source = videoFile.sourceKey;
                             } else if (selectedInput === 'webcam') {
                                 source = selectedCamera;
                             }
@@ -2961,8 +3123,8 @@
 
             // Determine video source
             let source = '0';  // Default webcam
-            if (selectedInput === 'video' && videoFile) {
-                source = videoFile.name;
+            if (selectedInput === 'video' && videoFile && videoFile.sourceKey) {
+                source = videoFile.sourceKey;
             } else if (selectedInput === 'webcam') {
                 source = selectedCamera;
             }
@@ -3029,7 +3191,7 @@
         // UI Helpers
         function updateStartButton() {
             const startBtn = document.getElementById('startBtn');
-            const canStart = (selectedInput === 'video' && videoFile) || 
+            const canStart = (selectedInput === 'video' && videoFile && videoFile.sourceKey) || 
                            (selectedInput === 'webcam');
             startBtn.disabled = !canStart;
         }
@@ -3628,6 +3790,201 @@
         fetchCameraSources();
         fetchAnalyticsHistory();
         fetchAuditLogs();
+    </script>
+    <script>
+        (function () {
+            const root = document.documentElement;
+            const scaleStep = 0.05;
+            const scaleMin = 0.9;
+            const scaleMax = 1.3;
+            let fontScale = parseFloat(localStorage.getItem('a11yFontScale') || '1');
+            let speakEnabled = localStorage.getItem('a11ySpeakEnabled') === 'true';
+
+            const decBtn = document.getElementById('fontDecrease');
+            const resetBtn = document.getElementById('fontReset');
+            const incBtn = document.getElementById('fontIncrease');
+            const toggleBtn = document.getElementById('screenReaderToggle');
+
+            function clamp(value, min, max) {
+                return Math.min(Math.max(value, min), max);
+            }
+
+            function applyFontScale() {
+                fontScale = clamp(fontScale, scaleMin, scaleMax);
+                root.style.fontSize = `${(fontScale * 100).toFixed(0)}%`;
+                localStorage.setItem('a11yFontScale', fontScale.toFixed(2));
+            }
+
+            function setSpeakEnabled(enabled) {
+                speakEnabled = enabled;
+                localStorage.setItem('a11ySpeakEnabled', enabled ? 'true' : 'false');
+                if (toggleBtn) {
+                    toggleBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+                }
+            }
+
+            function speak(text) {
+                if (!speakEnabled || !text || !window.speechSynthesis) {
+                    return;
+                }
+                window.speechSynthesis.cancel();
+                const utter = new SpeechSynthesisUtterance(text);
+                utter.rate = 1;
+                window.speechSynthesis.speak(utter);
+            }
+
+            function getReadableLabel(el) {
+                if (!el) {
+                    return '';
+                }
+                const aria = el.getAttribute('aria-label');
+                if (aria) {
+                    return aria.trim();
+                }
+                if (el.id) {
+                    const label = document.querySelector(`label[for="${el.id}"]`);
+                    if (label) {
+                        return label.textContent.trim();
+                    }
+                }
+                const placeholder = el.getAttribute('placeholder');
+                if (placeholder) {
+                    return placeholder.trim();
+                }
+                return (el.textContent || '').trim();
+            }
+
+            applyFontScale();
+            setSpeakEnabled(speakEnabled);
+
+            if (decBtn) {
+                decBtn.addEventListener('click', () => {
+                    fontScale -= scaleStep;
+                    applyFontScale();
+                });
+            }
+
+            if (resetBtn) {
+                resetBtn.addEventListener('click', () => {
+                    fontScale = 1;
+                    applyFontScale();
+                });
+            }
+
+            if (incBtn) {
+                incBtn.addEventListener('click', () => {
+                    fontScale += scaleStep;
+                    applyFontScale();
+                });
+            }
+
+            if (toggleBtn) {
+                toggleBtn.addEventListener('click', () => {
+                    setSpeakEnabled(!speakEnabled);
+                });
+            }
+
+            document.addEventListener('focusin', (event) => {
+                const target = event.target;
+                if (!speakEnabled || !target || target === document.body) {
+                    return;
+                }
+                const tag = (target.tagName || '').toLowerCase();
+                const role = target.getAttribute('role');
+                const isInteractive = ['input', 'select', 'textarea', 'button', 'a'].includes(tag) || role === 'button';
+                if (isInteractive) {
+                    const label = getReadableLabel(target);
+                    if (label) {
+                        speak(label);
+                    }
+                }
+            });
+
+            function applyToolbarPosition() {
+                const saved = localStorage.getItem('a11yToolbarPos');
+                if (!saved) {
+                    return;
+                }
+                try {
+                    const pos = JSON.parse(saved);
+                    if (typeof pos?.top === 'number' && typeof pos?.left === 'number') {
+                        const toolbar = document.getElementById('a11yToolbar');
+                        if (toolbar) {
+                            toolbar.style.left = `${pos.left}px`;
+                            toolbar.style.top = `${pos.top}px`;
+                            toolbar.style.right = 'auto';
+                        }
+                    }
+                } catch (error) {
+                    return;
+                }
+            }
+
+
+            function enableToolbarDrag() {
+                const toolbar = document.getElementById('a11yToolbar');
+                if (!toolbar) {
+                    return;
+                }
+                let startX = 0;
+                let startY = 0;
+                let originLeft = 0;
+                let originTop = 0;
+                let dragging = false;
+
+                function onPointerMove(event) {
+                    if (!dragging) {
+                        return;
+                    }
+                    const nextLeft = originLeft + (event.clientX - startX);
+                    const nextTop = originTop + (event.clientY - startY);
+                    const maxLeft = window.innerWidth - toolbar.offsetWidth - 8;
+                    const maxTop = window.innerHeight - toolbar.offsetHeight - 8;
+                    const clampedLeft = Math.min(Math.max(8, nextLeft), Math.max(8, maxLeft));
+                    const clampedTop = Math.min(Math.max(8, nextTop), Math.max(8, maxTop));
+                    toolbar.style.left = `${clampedLeft}px`;
+                    toolbar.style.top = `${clampedTop}px`;
+                    toolbar.style.right = 'auto';
+                }
+
+                function stopDragging() {
+                    if (!dragging) {
+                        return;
+                    }
+                    dragging = false;
+                    toolbar.classList.remove('is-dragging');
+                    toolbar.releasePointerCapture?.(toolbar._pointerId || 0);
+                    const left = parseFloat(toolbar.style.left || '0');
+                    const top = parseFloat(toolbar.style.top || '0');
+                    if (!Number.isNaN(left) && !Number.isNaN(top)) {
+                        localStorage.setItem('a11yToolbarPos', JSON.stringify({ left, top }));
+                    }
+                    document.removeEventListener('pointermove', onPointerMove);
+                    document.removeEventListener('pointerup', stopDragging);
+                }
+
+                toolbar.addEventListener('pointerdown', (event) => {
+                    if (event.button !== 0 || !event.target.closest('.a11y-handle')) {
+                        return;
+                    }
+                    event.preventDefault();
+                    dragging = true;
+                    toolbar.classList.add('is-dragging');
+                    toolbar._pointerId = event.pointerId;
+                    toolbar.setPointerCapture?.(event.pointerId);
+                    const rect = toolbar.getBoundingClientRect();
+                    startX = event.clientX;
+                    startY = event.clientY;
+                    originLeft = rect.left;
+                    originTop = rect.top;
+                    document.addEventListener('pointermove', onPointerMove);
+                    document.addEventListener('pointerup', stopDragging);
+                });
+            }
+
+            applyToolbarPosition();
+            enableToolbarDrag();
+        })();
     </script>
 </body>
 </html>

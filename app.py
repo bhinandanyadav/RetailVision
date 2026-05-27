@@ -7,6 +7,7 @@ import time
 import hmac
 import hashlib
 import uuid
+import tempfile
 import matplotlib 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -14,6 +15,7 @@ import sqlite3
 import bcrypt
 import requests
 from dotenv import load_dotenv
+from werkzeug.utils import secure_filename
 from model import generate_frames, generate_heatmap, stop_processing, get_analytics_data, apply_settings
 from analysis_state import current_analysis
 
@@ -34,6 +36,13 @@ current_source_key = '0'
 camera_stats_cache = {}
 analytics_last_snapshot = {}
 SNAPSHOT_INTERVAL_SEC = 15
+UPLOAD_DB_PATH = os.path.abspath(
+    os.environ.get('STORE_TRACKER_UPLOAD_DB_PATH', r'E:\MinorProject\Deployee\upload.sqlite')
+)
+UPLOAD_TEMP_DIR = os.path.join(tempfile.gettempdir(), 'store_tracker_uploads')
+ALLOWED_VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv'}
+UPLOAD_RETENTION_DAYS = int(os.environ.get('STORE_TRACKER_UPLOAD_RETENTION_DAYS', '7'))
+db_video_cache = {}
 
 video_source = 0  # default webcam
 current_mode = 'tracking'  # 'tracking' or 'heatmap'
@@ -43,6 +52,21 @@ def get_db_path():
     if os.path.isabs(DB_PATH):
         return DB_PATH
     return os.path.abspath(os.path.join(os.path.dirname(__file__), DB_PATH))
+
+
+def get_upload_db_connection():
+    conn = sqlite3.connect(UPLOAD_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def ensure_upload_temp_dir():
+    os.makedirs(UPLOAD_TEMP_DIR, exist_ok=True)
+
+
+def is_allowed_video(filename):
+    _, ext = os.path.splitext(filename.lower())
+    return ext in ALLOWED_VIDEO_EXTENSIONS
 
 
 def get_db_connection():
@@ -129,6 +153,108 @@ def init_db():
         )
     conn.close()
 init_db()
+ensure_upload_temp_dir()
+
+def init_upload_db():
+    conn = get_upload_db_connection()
+    with conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS uploaded_videos (
+                id TEXT PRIMARY KEY,
+                filename TEXT NOT NULL,
+                content BLOB NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+    conn.close()
+
+init_upload_db()
+
+def cleanup_expired_uploads():
+    conn = None
+    try:
+        conn = get_upload_db_connection()
+        with conn:
+            conn.execute(
+                "DELETE FROM uploaded_videos WHERE created_at < datetime('now', ?)",
+                (f"-{UPLOAD_RETENTION_DAYS} days",)
+            )
+    finally:
+        if conn:
+            conn.close()
+
+def store_uploaded_video(filename, content):
+    video_id = uuid.uuid4().hex
+    conn = None
+    try:
+        conn = get_upload_db_connection()
+        with conn:
+            conn.execute(
+                "INSERT INTO uploaded_videos (id, filename, content) VALUES (?, ?, ?)",
+                (video_id, filename, content)
+            )
+    finally:
+        if conn:
+            conn.close()
+    return video_id
+
+
+def fetch_uploaded_video(video_id):
+    conn = None
+    try:
+        conn = get_upload_db_connection()
+        row = conn.execute(
+            "SELECT id, filename, content FROM uploaded_videos WHERE id = ?",
+            (video_id,)
+        ).fetchone()
+        return row
+    finally:
+        if conn:
+            conn.close()
+
+
+def delete_uploaded_video(video_id):
+    conn = None
+    try:
+        conn = get_upload_db_connection()
+        with conn:
+            conn.execute("DELETE FROM uploaded_videos WHERE id = ?", (video_id,))
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_db_video_path(source_key):
+    if source_key in db_video_cache:
+        cached_path = db_video_cache[source_key]
+        if os.path.exists(cached_path):
+            return cached_path
+
+    video_id = source_key.replace('db_', '', 1)
+    row = fetch_uploaded_video(video_id)
+    if not row:
+        return None
+
+    safe_name = secure_filename(row['filename'])
+    temp_path = os.path.join(UPLOAD_TEMP_DIR, f"{source_key}_{safe_name}")
+    with open(temp_path, 'wb') as handle:
+        handle.write(row['content'])
+
+    db_video_cache[source_key] = temp_path
+    return temp_path
+
+
+def cleanup_db_video(source_key):
+    video_id = source_key.replace('db_', '', 1)
+    temp_path = db_video_cache.pop(source_key, None)
+    if temp_path and os.path.exists(temp_path):
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+    delete_uploaded_video(video_id)
 
 
 def log_audit_event(action, detail=None, user_id=None, user_email=None, ip_address=None):
@@ -726,6 +852,39 @@ def logout():
     return redirect(url_for('login'))
 
 
+@app.route('/upload_video', methods=['POST'])
+def upload_video():
+    if not require_login():
+        return jsonify({'status': 'error', 'message': 'Login required'}), 401
+
+    if 'video' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No video provided'}), 400
+
+    file = request.files['video']
+    if not file or not file.filename:
+        return jsonify({'status': 'error', 'message': 'Invalid file'}), 400
+
+    filename = secure_filename(file.filename)
+    if not is_allowed_video(filename):
+        return jsonify({'status': 'error', 'message': 'Unsupported video format'}), 400
+
+    content = file.read()
+    video_id = store_uploaded_video(filename, content)
+    source_key = f"db_{video_id}"
+
+    cleanup_expired_uploads()
+
+    log_audit_event(
+        'video_uploaded',
+        detail=source_key,
+        user_id=session.get('user_id'),
+        user_email=session.get('user_email'),
+        ip_address=request.remote_addr
+    )
+
+    return jsonify({'status': 'success', 'source': source_key})
+
+
 @app.route('/video_feed')
 def video_feed():
     if not require_login():
@@ -739,8 +898,15 @@ def video_feed():
         current_source = int(source_param)
         current_source_key = source_param
     else:
-        video_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', source_param))
-        if os.path.exists(video_path):
+        video_path = None
+        if source_param.startswith('db_'):
+            video_path = get_db_video_path(source_param)
+        else:
+            video_path = os.path.join(UPLOAD_TEMP_DIR, source_param)
+            if not os.path.exists(video_path):
+                video_path = None
+
+        if video_path and os.path.exists(video_path):
             current_source = video_path
             current_source_key = source_param
         else:
