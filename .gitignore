@@ -1,6 +1,7 @@
 myenv
 STORE_TRACKER_DB_PATH=store_tracker.sqlite
 venv/
+@@.venv/
 __pycache__/
 *.pyc
 *.pyo

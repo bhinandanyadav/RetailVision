@@ -170,7 +170,58 @@ def init_db():
             )
             """
         )
-    conn.close()
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS alert_thresholds (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_key TEXT NOT NULL UNIQUE,
+                    max_customers INTEGER,
+                    min_customers INTEGER,
+                    max_queue_length INTEGER,
+                    enabled INTEGER DEFAULT 1,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS alerts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_key TEXT NOT NULL,
+                    alert_type TEXT NOT NULL,
+                    alert_value INTEGER,
+                    threshold_value INTEGER,
+                    message TEXT,
+                    severity TEXT DEFAULT 'medium',
+                    acknowledged INTEGER DEFAULT 0,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS analytics_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_key TEXT NOT NULL,
+                    timestamp TIMESTAMP NOT NULL,
+                    hour_of_day INTEGER,
+                    customers_count INTEGER,
+                    queue_length INTEGER,
+                    crowd_level INTEGER,
+                    dwell_time_avg REAL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        
+            # Create indexes for performance
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_analytics_source_time ON analytics_history(source_key, captured_at)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_analytics_captured_at ON analytics_history(captured_at)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_source ON alerts(source_key)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_created ON alerts(created_at)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_snapshots_source_time ON analytics_snapshots(source_key, timestamp)")
+        conn.close()
 init_db()
 ensure_upload_temp_dir()
 
@@ -352,11 +403,151 @@ def record_analytics_snapshot(stats, source_key, mode):
         if conn:
             conn.close()
 
+    @@def check_and_create_alerts(source_key, stats):
+        """Check thresholds and create alerts if exceeded"""
+        if not stats:
+            return
+        conn = None
+        try:
+            conn = get_db_connection()
+            threshold = conn.execute(
+                "SELECT * FROM alert_thresholds WHERE source_key = ? AND enabled = 1",
+                (source_key,)
+            ).fetchone()
+            if not threshold:
+                return
+            customers = stats.get('uniqueCustomers', 0)
+            queue = stats.get('queueLength', 0)
+            if threshold['max_customers'] and customers > threshold['max_customers']:
+                create_alert(source_key, 'max_customers_exceeded', customers, threshold['max_customers'],
+                    f"Customers ({customers}) exceeded max ({threshold['max_customers']})", 'high')
+            if threshold['min_customers'] and customers < threshold['min_customers']:
+                create_alert(source_key, 'min_customers_threshold', customers, threshold['min_customers'],
+                    f"Customers ({customers}) below minimum ({threshold['min_customers']})", 'low')
+            if threshold['max_queue_length'] and queue > threshold['max_queue_length']:
+                create_alert(source_key, 'queue_length_exceeded', queue, threshold['max_queue_length'],
+                    f"Queue length ({queue}) exceeded max ({threshold['max_queue_length']})", 'medium')
+        finally:
+            if conn:
+                conn.close()
 def get_role():
+    @@def create_alert(source_key, alert_type, alert_value, threshold_value, message, severity='medium'):
+        """Create a new alert"""
+        conn = None
+        try:
+            conn = get_db_connection()
+            with conn:
+                conn.execute(
+                    "INSERT INTO alerts (source_key, alert_type, alert_value, threshold_value, message, severity) VALUES (?, ?, ?, ?, ?, ?)",
+                    (source_key, alert_type, alert_value, threshold_value, message, severity)
+                )
+        except Exception as exc:
+            print(f"Alert creation error: {exc}")
+        finally:
+            if conn:
+                conn.close()
     return session.get('role')
+    @@def get_paginated_results(query, params, page=1, per_page=50):
+        """Helper function for pagination"""
+        offset = (page - 1) * per_page
+        conn = None
+        try:
+            conn = get_db_connection()
+            count_query = f"SELECT COUNT(*) as cnt FROM ({query})"
+            total = conn.execute(count_query, params).fetchone()['cnt']
+            paginated_query = f"{query} LIMIT ? OFFSET ?"
+            param_list = list(params) + [per_page, offset]
+            rows = conn.execute(paginated_query, param_list).fetchall()
+            return {
+                'rows': [dict(row) for row in rows],
+                'total': total,
+                'page': page,
+                'per_page': per_page,
+                'pages': (total + per_page - 1) // per_page
+            }
+        finally:
+            if conn:
+                conn.close()
 
+    @@def calculate_peak_hours(source_key, days=7):
+        """Calculate peak hours for a camera over last N days"""
+        conn = None
+        try:
+            conn = get_db_connection()
+            results = conn.execute(
+                """
+                SELECT 
+                    CAST(strftime('%H', captured_at) AS INTEGER) as hour,
+                    AVG(unique_customers) as avg_customers,
+                    MAX(unique_customers) as max_customers,
+                    COUNT(*) as sample_count
+                FROM analytics_history
+                WHERE source_key = ? AND captured_at > datetime('now', ?)
+                GROUP BY hour
+                ORDER BY avg_customers DESC
+                """,
+                (source_key, f"-{days} days")
+            ).fetchall()
+            return [dict(row) for row in results]
+        finally:
+            if conn:
+                conn.close()
 
+    @@def calculate_dwell_time(source_key, days=7):
+        """Estimate average dwell time from analytics"""
+        conn = None
+        try:
+            conn = get_db_connection()
+            results = conn.execute(
+                """
+                SELECT 
+                    AVG(CAST(active_detections AS FLOAT) / NULLIF(unique_customers, 0)) * 5 as avg_dwell_minutes,
+                    MAX(active_detections) as peak_active,
+                    AVG(unique_customers) as avg_customers
+                FROM analytics_history
+                WHERE source_key = ? AND captured_at > datetime('now', ?) AND unique_customers > 0
+                """,
+                (source_key, f"-{days} days")
+            ).fetchone()
+            return dict(results) if results else {}
+        finally:
+            if conn:
+                conn.close()
 def require_login():
+    @@def get_analytics_summary(source_key, range_type='daily'):
+        """Get comprehensive analytics summary"""
+        conn = None
+        try:
+            conn = get_db_connection()
+            if range_type == 'hourly':
+                time_range = "-1 hour"
+            elif range_type == 'daily':
+                time_range = "-1 day"
+            elif range_type == 'weekly':
+                time_range = "-7 days"
+            else:
+                time_range = "-30 days"
+            summary = conn.execute(
+                """
+                SELECT 
+                    COUNT(*) as total_samples,
+                    AVG(unique_customers) as avg_customers,
+                    MAX(unique_customers) as peak_customers,
+                    MIN(unique_customers) as min_customers,
+                    AVG(queue_length) as avg_queue,
+                    MAX(queue_length) as max_queue,
+                    AVG(crowd_level) as avg_crowd_level,
+                    SUM(total_detections) as total_detections,
+                    ROUND(SUM(duration_seconds) / 3600.0, 1) as total_hours
+                FROM analytics_history
+                WHERE source_key = ? AND captured_at > datetime('now', ?)
+                """,
+                (source_key, time_range)
+            ).fetchone()
+            return dict(summary) if summary else {}
+        finally:
+            if conn:
+                conn.close()
     return get_role() is not None
 
 
@@ -1205,6 +1396,7 @@ def get_stats():
             if cached:
                 if should_snapshot(source_key):
                     record_analytics_snapshot(cached.get('stats'), source_key, current_mode)
+                @@                    check_and_create_alerts(source_key, cached.get('stats'))
                 return jsonify(cached)
 
         stats = current_analysis.get_stats()
@@ -1670,6 +1862,111 @@ def export_report():
     csv_bytes.seek(0)
     filename = f"report_{report_range}_{int(time.time())}.csv"
     return send_file(csv_bytes, mimetype='text/csv', as_attachment=True, download_name=filename)
+@app.route('/api/analytics/summary', methods=['GET'])
+def api_analytics_summary():
+    """Get comprehensive analytics summary for a camera"""
+    if not require_login():
+        return jsonify({'error': 'Unauthorized'}), 401
+    source_key = request.args.get('source', '0')
+    range_type = request.args.get('range', 'daily')
+    summary = get_analytics_summary(source_key, range_type)
+    peak_hours = calculate_peak_hours(source_key)
+    dwell_time = calculate_dwell_time(source_key)
+    return jsonify({'summary': summary, 'peak_hours': peak_hours, 'dwell_time': dwell_time, 'source_key': source_key, 'range': range_type})
+
+@app.route('/api/analytics/peak_hours', methods=['GET'])
+def api_peak_hours():
+    """Get peak hours analysis"""
+    if not require_login():
+        return jsonify({'error': 'Unauthorized'}), 401
+    source_key = request.args.get('source', '0')
+    days = int(request.args.get('days', '7'))
+    peak_hours = calculate_peak_hours(source_key, days)
+    return jsonify({'peak_hours': peak_hours, 'source_key': source_key, 'days': days})
+
+@app.route('/api/analytics/dwell_time', methods=['GET'])
+def api_dwell_time():
+    """Get dwell time estimates"""
+    if not require_login():
+        return jsonify({'error': 'Unauthorized'}), 401
+    source_key = request.args.get('source', '0')
+    days = int(request.args.get('days', '7'))
+    dwell_data = calculate_dwell_time(source_key, days)
+    return jsonify({'dwell_time': dwell_data, 'source_key': source_key, 'days': days})
+
+@app.route('/api/alerts', methods=['GET'])
+def api_get_alerts():
+    """Get recent alerts with pagination"""
+    if not require_login():
+        return jsonify({'error': 'Unauthorized'}), 401
+    source_key = request.args.get('source')
+    page = int(request.args.get('page', '1'))
+    per_page = int(request.args.get('per_page', '50'))
+    conn = None
+    try:
+        conn = get_db_connection()
+        query = "SELECT * FROM alerts WHERE 1=1"
+        params = []
+        if source_key:
+            query += " AND source_key = ?"
+            params.append(source_key)
+        query += " ORDER BY created_at DESC"
+        result = get_paginated_results(query, params, page, per_page)
+        return jsonify(result)
+    finally:
+        if conn:
+            conn.close()
+
+@app.route('/api/alerts/<int:alert_id>/acknowledge', methods=['POST'])
+def api_acknowledge_alert(alert_id):
+    """Mark alert as acknowledged"""
+    if not require_login():
+        return jsonify({'error': 'Unauthorized'}), 401
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn:
+            conn.execute("UPDATE alerts SET acknowledged = 1 WHERE id = ?", (alert_id,))
+        return jsonify({'success': True, 'message': 'Alert acknowledged'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+    finally:
+        if conn:
+            conn.close()
+
+@app.route('/api/alert_thresholds', methods=['GET', 'POST'])
+def api_alert_thresholds():
+    """Get or update alert thresholds"""
+    if not require_login():
+        return jsonify({'error': 'Unauthorized'}), 401
+    source_key = request.args.get('source', '0')
+    conn = None
+    try:
+        conn = get_db_connection()
+        if request.method == 'GET':
+            threshold = conn.execute("SELECT * FROM alert_thresholds WHERE source_key = ?", (source_key,)).fetchone()
+            if not threshold:
+                return jsonify({'source_key': source_key, 'enabled': False})
+            return jsonify(dict(threshold))
+        data = request.get_json()
+        with conn:
+            existing = conn.execute("SELECT id FROM alert_thresholds WHERE source_key = ?", (source_key,)).fetchone()
+            if existing:
+                conn.execute(
+                    "UPDATE alert_thresholds SET max_customers = ?, min_customers = ?, max_queue_length = ?, enabled = ? WHERE source_key = ?",
+                    (data.get('max_customers'), data.get('min_customers'), data.get('max_queue_length'), data.get('enabled', 1), source_key)
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO alert_thresholds (source_key, max_customers, min_customers, max_queue_length, enabled) VALUES (?, ?, ?, ?, ?)",
+                    (source_key, data.get('max_customers'), data.get('min_customers'), data.get('max_queue_length'), data.get('enabled', 1))
+                )
+        return jsonify({'success': True, 'message': 'Thresholds updated', 'source_key': source_key})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+    finally:
+        if conn:
+            conn.close()
 if __name__ == "__main__":
     debug_mode = os.environ.get('FLASK_DEBUG', '0').lower() in ('1', 'true', 'yes', 'on')
     host = os.environ.get('FLASK_HOST', '0.0.0.0')
