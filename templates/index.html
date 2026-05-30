@@ -589,6 +589,59 @@
             margin-bottom: 20px;
         }
 
+        .upload-library {
+            margin-top: 20px;
+            background: var(--bg-soft);
+            border-radius: 16px;
+            padding: 16px;
+            border: 1px solid var(--panel-border);
+        }
+
+        .upload-library-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .upload-library-title {
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .upload-library-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .upload-preview {
+            margin-top: 16px;
+            background: var(--bg-soft);
+            border-radius: 16px;
+            padding: 16px;
+            border: 1px solid var(--panel-border);
+        }
+
+        .upload-preview h5 {
+            margin-bottom: 10px;
+        }
+
+        .upload-preview video {
+            width: 100%;
+            border-radius: 12px;
+            background: #000;
+        }
+
+        #uploadPreviewCard video {
+            width: 100%;
+            border-radius: 12px;
+            background: #000;
+        }
+
         .upload-dropzone .supported-formats {
             font-size: 0.85rem;
             color: var(--text-muted);
@@ -1331,8 +1384,16 @@
 
         .data-grid {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
             gap: 24px;
+            align-items: start;
+        }
+
+        .data-column {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            min-width: 0;
         }
 
         .data-card {
@@ -1343,6 +1404,98 @@
             display: flex;
             flex-direction: column;
             gap: 16px;
+            height: fit-content;
+        }
+
+        .chatbot-card {
+            min-height: 380px;
+        }
+
+        .chatbot-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .chatbot-status {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            background: var(--badge-bg);
+            border: 1px solid var(--badge-border);
+            border-radius: 999px;
+            padding: 4px 10px;
+        }
+
+        .chatbot-status[data-state="error"] {
+            color: #fecaca;
+            border-color: rgba(248, 113, 113, 0.4);
+            background: rgba(248, 113, 113, 0.18);
+        }
+
+        .chatbot-status[data-state="busy"] {
+            color: #fde68a;
+            border-color: rgba(250, 204, 21, 0.4);
+            background: rgba(250, 204, 21, 0.12);
+        }
+
+        .chatbot-body {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: 14px;
+            padding: 12px;
+            min-height: 220px;
+            max-height: 300px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .chatbot-message {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .chatbot-message.user {
+            justify-content: flex-end;
+        }
+
+        .chatbot-bubble {
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: rgba(148, 163, 184, 0.12);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            color: var(--text-secondary);
+            max-width: 88%;
+            line-height: 1.5;
+        }
+
+        .chatbot-message.user .chatbot-bubble {
+            background: rgba(14, 165, 233, 0.18);
+            border-color: rgba(14, 165, 233, 0.35);
+            color: var(--text-primary);
+        }
+
+        .chatbot-message.assistant .chatbot-bubble {
+            background: rgba(15, 23, 42, 0.45);
+            border-color: rgba(148, 163, 184, 0.25);
+        }
+
+        .chatbot-input {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .chatbot-input .table-input {
+            flex: 1;
+        }
+
+        .chatbot-hint {
+            font-size: 0.78rem;
+            color: var(--text-muted);
         }
 
         .data-card h4 {
@@ -1546,6 +1699,10 @@
 
             .data-grid {
                 grid-template-columns: 1fr;
+            }
+
+            .data-column {
+                gap: 20px;
             }
         }
 
@@ -1945,6 +2102,19 @@
                     </div>
                     <button class="remove-file" onclick="removeFile()">✕ Remove</button>
                 </div>
+
+                <div class="upload-library" id="uploadLibrary">
+                    <div class="upload-library-header">
+                        <div class="upload-library-title">🗂️ Uploaded videos (last 7 days)</div>
+                        <div class="upload-library-actions">
+                            <select class="setting-select" id="uploadedVideoSelect" aria-label="Uploaded videos"></select>
+                            <button class="btn btn-secondary" id="useUploadedVideoBtn" type="button">Use Selected</button>
+                            <button class="btn btn-secondary" id="refreshUploadsBtn" type="button">Refresh</button>
+                        </div>
+                    </div>
+                    <p class="text-muted" id="uploadLibraryStatus" style="margin: 0;">Loading...</p>
+                </div>
+
             </div>
 
             <!-- Camera Preview Area -->
@@ -1969,7 +2139,6 @@
             <div class="preview-content">
                 <div class="video-container">
                     <img class="video-display" id="videoStream" src="" alt="Live stream" style="display: none;" />
-                    <video class="video-display" id="videoPreview" controls style="display: none;"></video>
                     <div class="camera-placeholder" id="streamPlaceholder" style="width: 100%; margin: 0;">
                         <div class="camera-placeholder-icon">📹</div>
                         <p>Live stream will appear here</p>
@@ -2087,110 +2256,120 @@
             </div>
 
             <div class="data-grid">
-                <div class="data-card" id="cameraCard">
-                    <h4>📷 Camera Sources</h4>
-                    <div class="data-actions">
-                        <input class="table-input admin-only" id="newCameraName" placeholder="Camera name">
-                        <input class="table-input admin-only" id="newCameraSource" placeholder="Source (0, rtsp://...)">
-                        <select class="table-select admin-only" id="newCameraMode">
-                            <option value="tracking" selected>Tracking</option>
-                            <option value="heatmap">Heatmap</option>
-                        </select>
-                        <label class="setting-checkbox admin-only">
-                            <input type="checkbox" id="newCameraEnabled" checked>
-                            <span>Enabled</span>
-                        </label>
-                        <button class="btn btn-success btn-sm admin-only" id="addCameraBtn" type="button">Add</button>
+                <div class="data-column data-column-primary">
+                    <div class="data-card" id="cameraCard">
+                        <h4>📷 Camera Sources</h4>
+                        <div class="data-actions">
+                            <input class="table-input admin-only" id="newCameraName" placeholder="Camera name">
+                            <input class="table-input admin-only" id="newCameraSource" placeholder="Source (0, rtsp://...)">
+                            <select class="table-select admin-only" id="newCameraMode">
+                                <option value="tracking" selected>Tracking</option>
+                                <option value="heatmap">Heatmap</option>
+                            </select>
+                            <label class="setting-checkbox admin-only">
+                                <input type="checkbox" id="newCameraEnabled" checked>
+                                <span>Enabled</span>
+                            </label>
+                            <button class="btn btn-success btn-sm admin-only" id="addCameraBtn" type="button">Add</button>
+                        </div>
+                        <div style="overflow-x: auto;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Source</th>
+                                        <th>Default Mode</th>
+                                        <th>Enabled</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cameraTableBody">
+                                    <tr><td colspan="5" class="empty-state">No cameras yet.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    <div style="overflow-x: auto;">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Source</th>
-                                    <th>Default Mode</th>
-                                    <th>Enabled</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="cameraTableBody">
-                                <tr><td colspan="5" class="empty-state">No cameras yet.</td></tr>
-                            </tbody>
-                        </table>
+
+                    <div class="data-card" id="uploadPreviewCard" style="display: none;">
+                        <h4>📼 Uploaded Video Preview</h4>
+                        <video id="uploadPreview" controls></video>
                     </div>
                 </div>
 
-                <div class="data-card" id="analyticsCard">
-                    <h4>📈 Analytics History</h4>
-                    <div class="data-filters">
-                        <label class="setting-checkbox">
-                            <span>Source</span>
-                            <select class="table-select" id="analyticsSourceSelect">
-                                <option value="all" selected>All</option>
-                            </select>
-                        </label>
-                        <label class="setting-checkbox">
-                            <span>Limit</span>
-                            <select class="table-select" id="analyticsLimitSelect">
-                                <option value="10">10</option>
-                                <option value="50" selected>50</option>
-                                <option value="100">100</option>
-                                <option value="200">200</option>
-                            </select>
-                        </label>
-                        <button class="btn btn-secondary btn-sm" id="refreshAnalyticsBtn" type="button">Refresh</button>
+                <div class="data-column data-column-secondary">
+                    <div class="data-card" id="analyticsCard">
+                        <h4>📈 Analytics History</h4>
+                        <div class="data-filters">
+                            <label class="setting-checkbox">
+                                <span>Source</span>
+                                <select class="table-select" id="analyticsSourceSelect">
+                                    <option value="all" selected>All</option>
+                                </select>
+                            </label>
+                            <label class="setting-checkbox">
+                                <span>Limit</span>
+                                <select class="table-select" id="analyticsLimitSelect">
+                                    <option value="10">10</option>
+                                    <option value="50" selected>50</option>
+                                    <option value="100">100</option>
+                                    <option value="200">200</option>
+                                </select>
+                            </label>
+                            <button class="btn btn-secondary btn-sm" id="refreshAnalyticsBtn" type="button">Refresh</button>
+                        </div>
+                        <div class="table-scroll">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Captured</th>
+                                        <th>Source</th>
+                                        <th>Mode</th>
+                                        <th>Unique</th>
+                                        <th>Detections</th>
+                                        <th>Queue</th>
+                                        <th>Crowd</th>
+                                        <th>Duration</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="analyticsTableBody">
+                                    <tr><td colspan="8" class="empty-state">No history yet.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    <div class="table-scroll">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Captured</th>
-                                    <th>Source</th>
-                                    <th>Mode</th>
-                                    <th>Unique</th>
-                                    <th>Detections</th>
-                                    <th>Queue</th>
-                                    <th>Crowd</th>
-                                    <th>Duration</th>
-                                </tr>
-                            </thead>
-                            <tbody id="analyticsTableBody">
-                                <tr><td colspan="8" class="empty-state">No history yet.</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
 
-                <div class="data-card admin-only" id="auditCard">
-                    <h4>🧾 Session & Audit Logs</h4>
-                    <div class="data-filters">
-                        <label class="setting-checkbox">
-                            <span>Limit</span>
-                            <select class="table-select" id="auditLimitSelect">
-                                <option value="10">10</option>
-                                <option value="50">50</option>
-                                <option value="100">100</option>
-                                <option value="200" selected>200</option>
-                            </select>
-                        </label>
-                        <button class="btn btn-secondary btn-sm" id="refreshAuditBtn" type="button">Refresh</button>
+                    <div class="data-card admin-only" id="auditCard">
+                        <h4>🧾 Session & Audit Logs</h4>
+                        <div class="data-filters">
+                            <label class="setting-checkbox">
+                                <span>Limit</span>
+                                <select class="table-select" id="auditLimitSelect">
+                                    <option value="10">10</option>
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                    <option value="200" selected>200</option>
+                                </select>
+                            </label>
+                            <button class="btn btn-secondary btn-sm" id="refreshAuditBtn" type="button">Refresh</button>
+                        </div>
+                        <div class="table-scroll">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>User</th>
+                                        <th>Action</th>
+                                        <th>Detail</th>
+                                        <th>IP</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="auditTableBody">
+                                    <tr><td colspan="5" class="empty-state">No logs yet.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    <div class="table-scroll">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Time</th>
-                                    <th>User</th>
-                                    <th>Action</th>
-                                    <th>Detail</th>
-                                    <th>IP</th>
-                                </tr>
-                            </thead>
-                            <tbody id="auditTableBody">
-                                <tr><td colspan="5" class="empty-state">No logs yet.</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
+
                 </div>
             </div>
         </section>
@@ -2891,10 +3070,13 @@
             
             if (option === 'webcam') {
                 document.getElementById('cameraArea').classList.add('active');
-                stopCamera(); // Reset camera if switching
+                stopCamera();
             } else {
                 document.getElementById('uploadArea').classList.add('active');
+                stopCamera();
             }
+
+            document.querySelector('.preview-section').classList.add('active');
 
             updateSourceKey();
             loadZonesForCamera(currentSourceKey);
@@ -2910,10 +3092,12 @@
                 document.getElementById('fileSize').textContent = formatFileSize(file.size);
                 document.getElementById('selectedFile').classList.add('active');
                 
-                // Show preview section and load video
-                document.querySelector('.preview-section').classList.add('active');
-                const videoPreview = document.getElementById('videoPreview');
-                videoPreview.src = URL.createObjectURL(file);
+                const uploadPreviewCard = document.getElementById('uploadPreviewCard');
+                const uploadPreview = document.getElementById('uploadPreview');
+                if (uploadPreviewCard && uploadPreview) {
+                    uploadPreviewCard.style.display = 'block';
+                    uploadPreview.src = URL.createObjectURL(file);
+                }
 
                 showToast('⏳ Uploading video...', 'warning');
                 const uploadResult = await uploadVideoFile(file);
@@ -2937,7 +3121,14 @@
             videoFile = null;
             document.getElementById('fileInput').value = '';
             document.getElementById('selectedFile').classList.remove('active');
-            document.querySelector('.preview-section').classList.remove('active');
+            const uploadPreviewCard = document.getElementById('uploadPreviewCard');
+            const uploadPreview = document.getElementById('uploadPreview');
+            if (uploadPreviewCard) {
+                uploadPreviewCard.style.display = 'none';
+            }
+            if (uploadPreview) {
+                uploadPreview.src = '';
+            }
             updateSourceKey();
             loadZonesForCamera(currentSourceKey);
             updateStartButton();
@@ -3009,9 +3200,114 @@
             }
         });
 
+        const uploadLibrary = document.getElementById('uploadLibrary');
+        const uploadedVideoSelect = document.getElementById('uploadedVideoSelect');
+        const uploadLibraryStatus = document.getElementById('uploadLibraryStatus');
+        const useUploadedVideoBtn = document.getElementById('useUploadedVideoBtn');
+        const refreshUploadsBtn = document.getElementById('refreshUploadsBtn');
+
+        function setUploadLibraryStatus(message) {
+            if (uploadLibraryStatus) {
+                uploadLibraryStatus.textContent = message;
+            }
+        }
+
+        async function loadUploadedVideos() {
+            if (!uploadLibrary || !uploadedVideoSelect) {
+                return;
+            }
+            if (userRole !== 'admin') {
+                uploadLibrary.style.display = 'none';
+                return;
+            }
+
+            setUploadLibraryStatus('Loading...');
+            uploadedVideoSelect.innerHTML = '';
+            try {
+                const response = await fetch('/api/uploads');
+                if (!response.ok) {
+                    throw new Error('Failed to load uploads');
+                }
+                const data = await response.json();
+                const uploads = Array.isArray(data.uploads) ? data.uploads : [];
+                if (uploads.length === 0) {
+                    uploadedVideoSelect.innerHTML = '<option value="">No uploads found</option>';
+                    setUploadLibraryStatus('No uploads found.');
+                    return;
+                }
+
+                uploads.forEach((row) => {
+                    const option = document.createElement('option');
+                    option.value = row.id;
+                    const stamp = row.created_at ? ` • ${row.created_at}` : '';
+                    option.textContent = `${row.filename}${stamp}`;
+                    uploadedVideoSelect.appendChild(option);
+                });
+                setUploadLibraryStatus(`${uploads.length} video(s) available.`);
+            } catch (error) {
+                console.error('Upload list error:', error);
+                uploadedVideoSelect.innerHTML = '<option value="">Failed to load uploads</option>';
+                setUploadLibraryStatus('Could not load uploads.');
+            }
+        }
+
+        function useUploadedVideo() {
+            if (!uploadedVideoSelect || !uploadedVideoSelect.value) {
+                showToast('Please select an uploaded video.', 'warning');
+                return;
+            }
+            const sourceKey = `db_${uploadedVideoSelect.value}`;
+
+            selectedInput = 'video';
+            document.getElementById('webcamOption').classList.remove('active');
+            document.getElementById('videoOption').classList.add('active');
+            document.getElementById('webcamOption').setAttribute('aria-pressed', 'false');
+            document.getElementById('videoOption').setAttribute('aria-pressed', 'true');
+            document.getElementById('uploadArea').classList.add('active');
+            document.getElementById('cameraArea').classList.remove('active');
+
+            stopCamera();
+
+            const uploadPreviewCard = document.getElementById('uploadPreviewCard');
+            const uploadPreview = document.getElementById('uploadPreview');
+            if (uploadPreviewCard && uploadPreview) {
+                uploadPreviewCard.style.display = 'block';
+                uploadPreview.src = `/uploads/${encodeURIComponent(sourceKey)}`;
+            }
+
+            const videoStream = document.getElementById('videoStream');
+            if (videoStream) {
+                videoStream.style.display = 'none';
+            }
+            const streamPlaceholder = document.getElementById('streamPlaceholder');
+            if (streamPlaceholder) {
+                streamPlaceholder.style.display = 'flex';
+            }
+
+            videoFile = { file: null, sourceKey };
+            updateSourceKey();
+            loadZonesForCamera(currentSourceKey);
+            updateStartButton();
+            showToast('✅ Uploaded video selected.', 'success');
+        }
+
+        if (useUploadedVideoBtn) {
+            useUploadedVideoBtn.addEventListener('click', useUploadedVideo);
+        }
+
+        if (refreshUploadsBtn) {
+            refreshUploadsBtn.addEventListener('click', loadUploadedVideos);
+        }
+
+        loadUploadedVideos();
+
         // Camera Functions
         async function startCamera() {
             try {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    showToast('Camera requires HTTPS or localhost.', 'error');
+                    return;
+                }
                 cameraStream = await navigator.mediaDevices.getUserMedia({ 
                     video: { width: 1280, height: 720 } 
                 });
@@ -3027,7 +3323,8 @@
                 showToast('📷 Camera started!', 'success');
                 updateStartButton();
             } catch (error) {
-                showToast('❌ Could not access camera!', 'error');
+                const message = error && error.name ? `Camera error: ${error.name}` : 'Could not access camera.';
+                showToast(`❌ ${message}`, 'error');
                 console.error('Camera error:', error);
             }
         }
@@ -3207,6 +3504,9 @@
                 console.log('Stream connecting.');
             });
         }
+
+        stopCamera();
+
 
         function showToast(message, type = 'success') {
             const toast = document.getElementById('toast');
@@ -3624,6 +3924,8 @@
                     // Display chart
                     if (data.image) {
                         statsChartContainer.innerHTML = `<img src="data:image/png;base64,${data.image}" alt="Analytics Chart" style="width: 100%; border-radius: 12px;">`;
+                    } else if (!statsChartContainer.innerHTML.trim()) {
+                        statsChartContainer.innerHTML = '<div class="empty-state">Chart will appear after a few seconds of analysis.</div>';
                     }
 
                     // Display stat cards

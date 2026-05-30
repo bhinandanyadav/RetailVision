@@ -5,6 +5,7 @@ import os
 import colorsys
 import threading
 import time
+import torch
 from analysis_state import current_analysis
 
 print("✅ Libraries imported successfully!")
@@ -16,6 +17,35 @@ MODEL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 MODEL_NAME = os.environ.get('MODEL_WEIGHTS', 'yolo11s.pt')
 model = None
 model_lock = threading.Lock()
+MODEL_CACHE = {}
+MODEL_PRELOAD_LIST = [
+    name.strip()
+    for name in os.environ.get(
+        'MODEL_PRELOAD_LIST',
+        'yolov8l.pt,yolov8m.pt,yolov8n.pt,yolo11l.pt,yolo11m.pt,yolo11s.pt,yolov8s.pt'
+    ).split(',')
+    if name.strip()
+]
+
+MODEL_DEVICE = os.environ.get(
+    'MODEL_DEVICE',
+    'cuda' if torch.cuda.is_available() else 'cpu'
+)
+MODEL_HALF = os.environ.get('MODEL_HALF', '1') == '1'
+ENABLE_FRAME_ENHANCEMENT = os.environ.get('ENABLE_FRAME_ENHANCEMENT', '0') == '1'
+CUDA_BENCHMARK = os.environ.get('CUDA_BENCHMARK', '1') == '1'
+TORCH_NUM_THREADS = int(os.environ.get('TORCH_NUM_THREADS', '0') or 0)
+
+if CUDA_BENCHMARK and torch.cuda.is_available():
+    torch.backends.cudnn.benchmark = True
+
+if TORCH_NUM_THREADS > 0:
+    torch.set_num_threads(TORCH_NUM_THREADS)
+
+try:
+    torch.set_float32_matmul_precision('high')
+except Exception:
+    pass
 
 CONFIDENCE_THRESHOLD = 0.3
 IOU_THRESHOLD = 0.5
@@ -64,13 +94,33 @@ def load_model(model_name):
 
     with model_lock:
         MODEL_NAME = model_name
-        model = YOLO(model_path)
+        if model_name in MODEL_CACHE:
+            model = MODEL_CACHE[model_name]
+        else:
+            model = YOLO(model_path)
+            try:
+                model.to(MODEL_DEVICE)
+            except Exception:
+                pass
+            try:
+                model.fuse()
+            except Exception:
+                pass
+            if MODEL_DEVICE.startswith('cuda') and MODEL_HALF:
+                try:
+                    model.model.half()
+                except Exception:
+                    pass
+            MODEL_CACHE[model_name] = model
 
 
 def init_model():
     global MODEL_NAME
     try:
-        load_model(MODEL_NAME)
+        for name in MODEL_PRELOAD_LIST:
+            load_model(name)
+        if MODEL_NAME not in MODEL_CACHE:
+            load_model(MODEL_NAME)
     except Exception:
         fallback_name = os.environ.get('MODEL_FALLBACK_WEIGHTS', 'yolov8s.pt')
         if fallback_name != MODEL_NAME:
@@ -163,6 +213,11 @@ def enhance_frame(frame):
     l = clahe.apply(l)
     return cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
 
+def prepare_frame(frame):
+    if ENABLE_FRAME_ENHANCEMENT:
+        return enhance_frame(frame)
+    return frame
+
 def get_color_for_id(track_id):
     hue = (track_id * 0.618033988749895) % 1.0
     rgb = colorsys.hsv_to_rgb(hue, 0.8, 0.95)
@@ -239,14 +294,16 @@ def generate_frames(video_source):
         
         with model_lock:
             results = model.track(
-                enhance_frame(frame),
+                prepare_frame(frame),
                 verbose=False,
                 conf=CONFIDENCE_THRESHOLD,
                 iou=IOU_THRESHOLD,
                 imgsz=IMG_SIZE,
                 classes=DETECT_CLASSES,
                 tracker=TRACKER_TYPE,
-                persist=True
+                persist=True,
+                device=MODEL_DEVICE,
+                half=MODEL_DEVICE.startswith('cuda') and MODEL_HALF
             )
         
         active = 0
@@ -396,14 +453,16 @@ def generate_heatmap(video_source):
         
         with model_lock:
             results = model.track(
-                enhance_frame(frame),
+                prepare_frame(frame),
                 verbose=False,
                 conf=CONFIDENCE_THRESHOLD,
                 iou=IOU_THRESHOLD,
                 imgsz=IMG_SIZE,
                 classes=DETECT_CLASSES,
                 tracker=TRACKER_TYPE,
-                persist=True
+                persist=True,
+                device=MODEL_DEVICE,
+                half=MODEL_DEVICE.startswith('cuda') and MODEL_HALF
             )
         
         current_analysis.heatmap_accumulator *= HEATMAP_DECAY

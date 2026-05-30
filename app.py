@@ -35,7 +35,9 @@ RAZORPAY_WEBHOOK_SECRET = os.environ.get('RAZORPAY_WEBHOOK_SECRET', '')
 current_source_key = '0'
 camera_stats_cache = {}
 analytics_last_snapshot = {}
+analytics_chart_cache = {}
 SNAPSHOT_INTERVAL_SEC = 15
+CHART_INTERVAL_SEC = int(os.environ.get('STORE_TRACKER_CHART_INTERVAL_SEC', '12'))
 UPLOAD_DB_PATH = os.path.abspath(
     os.environ.get('STORE_TRACKER_UPLOAD_DB_PATH', r'E:\MinorProject\Deployee\upload.sqlite')
 )
@@ -67,6 +69,23 @@ def ensure_upload_temp_dir():
 def is_allowed_video(filename):
     _, ext = os.path.splitext(filename.lower())
     return ext in ALLOWED_VIDEO_EXTENSIONS
+
+
+def get_video_mimetype(filename):
+    ext = os.path.splitext(filename.lower())[1]
+    if ext == '.mp4':
+        return 'video/mp4'
+    if ext == '.avi':
+        return 'video/x-msvideo'
+    if ext == '.mov':
+        return 'video/quicktime'
+    if ext == '.mkv':
+        return 'video/x-matroska'
+    if ext == '.wmv':
+        return 'video/x-ms-wmv'
+    if ext == '.flv':
+        return 'video/x-flv'
+    return 'application/octet-stream'
 
 
 def get_db_connection():
@@ -283,6 +302,14 @@ def should_snapshot(source_key):
         return False
     analytics_last_snapshot[source_key] = now
     return True
+
+
+def should_refresh_chart(source_key):
+    now = time.time()
+    cached = analytics_chart_cache.get(source_key)
+    if not cached:
+        return True
+    return (now - cached.get('ts', 0)) >= CHART_INTERVAL_SEC
 
 
 def record_analytics_snapshot(stats, source_key, mode):
@@ -871,6 +898,13 @@ def upload_video():
     content = file.read()
     video_id = store_uploaded_video(filename, content)
     source_key = f"db_{video_id}"
+    temp_path = os.path.join(UPLOAD_TEMP_DIR, f"{source_key}_{filename}")
+    try:
+        with open(temp_path, 'wb') as temp_file:
+            temp_file.write(content)
+        db_video_cache[source_key] = temp_path
+    except OSError as exc:
+        print(f"Upload cache write failed: {exc}")
 
     cleanup_expired_uploads()
 
@@ -883,6 +917,51 @@ def upload_video():
     )
 
     return jsonify({'status': 'success', 'source': source_key})
+
+
+@app.route('/api/uploads', methods=['GET'])
+def list_uploads():
+    if not require_login():
+        return jsonify({'status': 'error', 'message': 'Login required'}), 401
+    if get_role() != 'admin':
+        return jsonify({'status': 'error', 'message': 'Admin access required'}), 403
+
+    conn = None
+    try:
+        conn = get_upload_db_connection()
+        rows = conn.execute(
+            "SELECT id, filename, created_at FROM uploaded_videos ORDER BY created_at DESC"
+        ).fetchall()
+        payload = [
+            {
+                'id': row['id'],
+                'filename': row['filename'],
+                'created_at': row['created_at']
+            }
+            for row in rows
+        ]
+        return jsonify({'status': 'success', 'uploads': payload})
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/uploads/<source_key>', methods=['GET'])
+def download_upload(source_key):
+    if not require_login():
+        return Response(status=401)
+    if get_role() != 'admin':
+        return Response(status=403)
+
+    if not source_key.startswith('db_'):
+        source_key = f"db_{source_key}"
+
+    video_path = get_db_video_path(source_key)
+    if not video_path or not os.path.exists(video_path):
+        return Response(status=404)
+
+    filename = os.path.basename(video_path)
+    return send_file(video_path, mimetype=get_video_mimetype(filename), as_attachment=False)
 
 
 @app.route('/video_feed')
@@ -1129,18 +1208,27 @@ def get_stats():
                 return jsonify(cached)
 
         stats = current_analysis.get_stats()
-        all_track_ids = current_analysis.all_track_ids
-        
-        all_positions = [pos for history in current_analysis.track_history.values() for pos in history]
-        unique_positions = set(all_positions)
-
-        img_base64 = get_analytics_data(
-            stats['frameCount'],
-            stats['totalDetections'],
-            all_track_ids,
-            unique_positions,
-            stats['duration']
-        )
+        source_for_chart = source_key or current_source_key
+        img_base64 = None
+        if stats.get('frameCount', 0) > 0 and should_refresh_chart(source_for_chart):
+            all_track_ids = current_analysis.all_track_ids
+            all_positions = [pos for history in current_analysis.track_history.values() for pos in history]
+            unique_positions = set(all_positions)
+            img_base64 = get_analytics_data(
+                stats['frameCount'],
+                stats['totalDetections'],
+                all_track_ids,
+                unique_positions,
+                stats['duration']
+            )
+            analytics_chart_cache[source_for_chart] = {
+                'ts': time.time(),
+                'image': img_base64
+            }
+        else:
+            cached_chart = analytics_chart_cache.get(source_for_chart)
+            if cached_chart:
+                img_base64 = cached_chart.get('image')
 
         payload = {
             'status': 'success',

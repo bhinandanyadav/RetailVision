@@ -27,16 +27,6 @@ Linux/macOS:
 source venv/bin/activate
 ```
 
-<<<<<<< HEAD
-=======
-1. Create and activate your virtual environment.
- ```bash
-python -m venv venv
-```
-```bash
-venv\Scripts\activate
-```
->>>>>>> 55729b926afa92d6fb674dac30a64ed6eccbe19c
 2. Install dependencies:
 
 ```bash
