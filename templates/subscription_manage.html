@@ -39,13 +39,6 @@
             position: fixed;
             top: 16px;
             right: 16px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 8px 12px;
-            border-radius: 16px;
-            background: linear-gradient(90deg, #f6d365 0%, #fda085 100%);
-            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.35);
             z-index: 30;
             cursor: move;
         }
@@ -54,14 +47,59 @@
             user-select: none;
         }
 
-        .a11y-handle {
-            background: rgba(17, 24, 39, 0.12);
-            border-color: rgba(17, 24, 39, 0.35);
-            cursor: grab;
+        .a11y-toggle-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+            border: none;
+            box-shadow: 0 4px 16px rgba(15, 23, 42, 0.35);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            color: #111827;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            position: relative;
+            z-index: 2;
         }
 
-        .a11y-toolbar.is-dragging .a11y-handle {
-            cursor: grabbing;
+        .a11y-toggle-btn:hover {
+            transform: scale(1.08);
+            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.45);
+        }
+
+        .a11y-toggle-btn:focus-visible {
+            outline: 2px solid #0f172a;
+            outline-offset: 2px;
+        }
+
+        .a11y-panel {
+            position: absolute;
+            top: 56px;
+            right: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 16px;
+            background: linear-gradient(90deg, #f6d365 0%, #fda085 100%);
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.35);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-8px) scale(0.95);
+            transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s ease;
+        }
+
+        .a11y-toolbar.is-expanded .a11y-panel {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0) scale(1);
+        }
+
+        .a11y-toolbar.is-expanded .a11y-toggle-btn {
+            box-shadow: 0 4px 20px rgba(15, 23, 42, 0.5);
         }
 
         .a11y-btn {
@@ -128,11 +166,13 @@
 <body>
     <a class="skip-link" href="#main">Skip to main content</a>
     <div class="a11y-toolbar" id="a11yToolbar" role="toolbar" aria-label="Accessibility">
-        <button class="a11y-btn a11y-handle" id="toolbarHandle" type="button" aria-label="Move accessibility toolbar" title="Move">Move</button>
-        <button class="a11y-btn" id="fontDecrease" type="button" aria-label="Decrease text size">A-</button>
-        <button class="a11y-btn" id="fontReset" type="button" aria-label="Reset text size">A</button>
-        <button class="a11y-btn" id="fontIncrease" type="button" aria-label="Increase text size">A+</button>
-        <button class="a11y-btn is-toggle" id="screenReaderToggle" type="button" aria-pressed="false">Screen Reader</button>
+        <button class="a11y-toggle-btn" id="a11yToggle" type="button" aria-label="Toggle accessibility toolbar" aria-expanded="false" title="Accessibility">♿</button>
+        <div class="a11y-panel" id="a11yPanel">
+            <button class="a11y-btn" id="fontDecrease" type="button" aria-label="Decrease text size">A-</button>
+            <button class="a11y-btn" id="fontReset" type="button" aria-label="Reset text size">A</button>
+            <button class="a11y-btn" id="fontIncrease" type="button" aria-label="Increase text size">A+</button>
+            <button class="a11y-btn is-toggle" id="screenReaderToggle" type="button" aria-pressed="false">Screen Reader</button>
+        </div>
     </div>
     <main id="main">
         <div class="card" aria-labelledby="subscription-title" aria-describedby="subscription-help">
@@ -168,6 +208,8 @@
             let fontScale = parseFloat(localStorage.getItem('a11yFontScale') || '1');
             let speakEnabled = localStorage.getItem('a11ySpeakEnabled') === 'true';
 
+            const a11yToggle = document.getElementById('a11yToggle');
+            const a11yPanel = document.getElementById('a11yPanel');
             const decBtn = document.getElementById('fontDecrease');
             const resetBtn = document.getElementById('fontReset');
             const incBtn = document.getElementById('fontIncrease');
@@ -224,6 +266,28 @@
 
             applyFontScale();
             setSpeakEnabled(speakEnabled);
+
+            if (a11yToggle) {
+                a11yToggle.addEventListener('click', () => {
+                    const toolbar = document.getElementById('a11yToolbar');
+                    const isExpanded = toolbar.classList.toggle('is-expanded');
+                    a11yToggle.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+                });
+            }
+
+            if (a11yPanel) {
+                a11yPanel.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                });
+            }
+
+            document.addEventListener('click', (e) => {
+                const toolbar = document.getElementById('a11yToolbar');
+                if (toolbar && toolbar.classList.contains('is-expanded') && !toolbar.contains(e.target)) {
+                    toolbar.classList.remove('is-expanded');
+                    if (a11yToggle) a11yToggle.setAttribute('aria-expanded', 'false');
+                }
+            });
 
             if (decBtn) {
                 decBtn.addEventListener('click', () => {
@@ -288,7 +352,6 @@
                 }
             }
 
-
             function enableToolbarDrag() {
                 const toolbar = document.getElementById('a11yToolbar');
                 if (!toolbar) {
@@ -332,21 +395,39 @@
                 }
 
                 toolbar.addEventListener('pointerdown', (event) => {
-                    if (event.button !== 0 || !event.target.closest('.a11y-handle')) {
+                    if (event.button !== 0 || !event.target.closest('.a11y-toggle-btn')) {
                         return;
                     }
-                    event.preventDefault();
-                    dragging = true;
-                    toolbar.classList.add('is-dragging');
-                    toolbar._pointerId = event.pointerId;
-                    toolbar.setPointerCapture?.(event.pointerId);
+                    const dx = event.clientX;
+                    const dy = event.clientY;
+                    let moved = false;
                     const rect = toolbar.getBoundingClientRect();
-                    startX = event.clientX;
-                    startY = event.clientY;
+                    startX = dx;
+                    startY = dy;
                     originLeft = rect.left;
                     originTop = rect.top;
-                    document.addEventListener('pointermove', onPointerMove);
-                    document.addEventListener('pointerup', stopDragging);
+
+                    function onMove(e) {
+                        if (Math.abs(e.clientX - dx) > 4 || Math.abs(e.clientY - dy) > 4) {
+                            if (!moved) {
+                                moved = true;
+                                dragging = true;
+                                toolbar.classList.add('is-dragging');
+                                toolbar._pointerId = event.pointerId;
+                                toolbar.setPointerCapture?.(event.pointerId);
+                                document.addEventListener('pointermove', onPointerMove);
+                                document.addEventListener('pointerup', stopDragging);
+                            }
+                        }
+                    }
+
+                    function onUp() {
+                        document.removeEventListener('pointermove', onMove);
+                        document.removeEventListener('pointerup', onUp);
+                    }
+
+                    document.addEventListener('pointermove', onMove);
+                    document.addEventListener('pointerup', onUp);
                 });
             }
 

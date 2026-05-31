@@ -1,5 +1,8 @@
-from collections import defaultdict
+from collections import defaultdict, deque
 import time
+
+TRAIL_LENGTH = 30
+STALE_TRACK_TIMEOUT = 300  # 5 minutes
 
 class Analysis:
     """A class to hold the state of a single analysis session."""
@@ -8,8 +11,9 @@ class Analysis:
 
     def reset(self):
         """Resets the analysis state."""
-        self.track_history = defaultdict(list)
+        self.track_history = defaultdict(lambda: deque(maxlen=TRAIL_LENGTH))
         self.all_track_ids = set()
+        self.track_last_seen = {}
         self.frame_count = 0
         self.total_detections = 0
         self.start_time = time.time()
@@ -21,10 +25,10 @@ class Analysis:
         self.queue_length = 0
         self.queue_wait_seconds = 0.0
         self.crowd_level = 0
-        self.alerts = []
+        self.alerts = deque(maxlen=100)
         self.alert_counter = 0
         self.alert_last_sent = {}
-        self.metric_history = []
+        self.metric_history = deque(maxlen=3600)
 
     def update_duration(self):
         self.duration = time.time() - self.start_time
@@ -54,8 +58,17 @@ class Analysis:
             'active': int(active),
             'queue': int(queue_length)
         })
-        if len(self.metric_history) > 3600:
-            self.metric_history = self.metric_history[-3600:]
+        # Prune stale tracks every 100 frames
+        if self.frame_count % 100 == 0:
+            self._prune_stale_tracks(timestamp)
+
+    def _prune_stale_tracks(self, now):
+        stale_ids = [tid for tid, last_seen in self.track_last_seen.items()
+                     if (now - last_seen) > STALE_TRACK_TIMEOUT]
+        for tid in stale_ids:
+            self.all_track_ids.discard(tid)
+            self.track_history.pop(tid, None)
+            self.track_last_seen.pop(tid, None)
 
     def add_alert(self, alert_type, message, level='warning'):
         self.alert_counter += 1
@@ -67,8 +80,6 @@ class Analysis:
             'message': message
         }
         self.alerts.append(payload)
-        if len(self.alerts) > 100:
-            self.alerts = self.alerts[-100:]
         return payload
 
 # Create a global instance of the Analysis class

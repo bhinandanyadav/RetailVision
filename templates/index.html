@@ -60,13 +60,6 @@
             position: fixed;
             top: 16px;
             right: 16px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 8px 12px;
-            border-radius: 16px;
-            background: linear-gradient(90deg, #f6d365 0%, #fda085 100%);
-            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.35);
             z-index: 2001;
             cursor: move;
         }
@@ -75,14 +68,59 @@
             user-select: none;
         }
 
-        .a11y-handle {
-            background: rgba(17, 24, 39, 0.12);
-            border-color: rgba(17, 24, 39, 0.35);
-            cursor: grab;
+        .a11y-toggle-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+            border: none;
+            box-shadow: 0 4px 16px rgba(15, 23, 42, 0.35);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            color: #111827;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            position: relative;
+            z-index: 2;
         }
 
-        .a11y-toolbar.is-dragging .a11y-handle {
-            cursor: grabbing;
+        .a11y-toggle-btn:hover {
+            transform: scale(1.08);
+            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.45);
+        }
+
+        .a11y-toggle-btn:focus-visible {
+            outline: 2px solid #0f172a;
+            outline-offset: 2px;
+        }
+
+        .a11y-panel {
+            position: absolute;
+            top: 56px;
+            right: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 16px;
+            background: linear-gradient(90deg, #f6d365 0%, #fda085 100%);
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.35);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-8px) scale(0.95);
+            transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s ease;
+        }
+
+        .a11y-toolbar.is-expanded .a11y-panel {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0) scale(1);
+        }
+
+        .a11y-toolbar.is-expanded .a11y-toggle-btn {
+            box-shadow: 0 4px 20px rgba(15, 23, 42, 0.5);
         }
 
         .a11y-btn {
@@ -1983,11 +2021,13 @@
 <body>
     <a class="skip-link" href="#main">Skip to main content</a>
     <div class="a11y-toolbar" id="a11yToolbar" role="toolbar" aria-label="Accessibility">
-        <button class="a11y-btn a11y-handle" id="toolbarHandle" type="button" aria-label="Move accessibility toolbar" title="Move">Move</button>
-        <button class="a11y-btn" id="fontDecrease" type="button" aria-label="Decrease text size">A-</button>
-        <button class="a11y-btn" id="fontReset" type="button" aria-label="Reset text size">A</button>
-        <button class="a11y-btn" id="fontIncrease" type="button" aria-label="Increase text size">A+</button>
-        <button class="a11y-btn is-toggle" id="screenReaderToggle" type="button" aria-pressed="false">Screen Reader</button>
+        <button class="a11y-toggle-btn" id="a11yToggle" type="button" aria-label="Toggle accessibility toolbar" aria-expanded="false" title="Accessibility">♿</button>
+        <div class="a11y-panel" id="a11yPanel">
+            <button class="a11y-btn" id="fontDecrease" type="button" aria-label="Decrease text size">A-</button>
+            <button class="a11y-btn" id="fontReset" type="button" aria-label="Reset text size">A</button>
+            <button class="a11y-btn" id="fontIncrease" type="button" aria-label="Increase text size">A+</button>
+            <button class="a11y-btn is-toggle" id="screenReaderToggle" type="button" aria-pressed="false">Screen Reader</button>
+        </div>
     </div>
     <div class="bg-animation"></div>
 
@@ -2230,6 +2270,8 @@
                         <option value="daily" selected>Daily</option>
                         <option value="weekly">Weekly</option>
                     </select>
+                    <input type="date" class="setting-input" id="reportStartDate" placeholder="Start Date" style="max-width:160px">
+                    <input type="date" class="setting-input" id="reportEndDate" placeholder="End Date" style="max-width:160px">
                     <button class="btn btn-secondary" id="exportCsvBtn" type="button">⬇️ Export CSV</button>
                     <button class="btn btn-secondary" id="exportPdfBtn" type="button">⬇️ Export PDF</button>
                 </div>
@@ -3895,7 +3937,13 @@
         function startStatsPolling() {
             stopStatsPolling();
             fetchAndDisplayStats();
-            statsIntervalId = setInterval(fetchAndDisplayStats, 2000);
+            statsIntervalId = setInterval(fetchAndDisplayStats, 10000);
+        }
+
+        function handleSocketStats(data) {
+            if (data && data.status === 'success') {
+                updateStatsDisplay(data);
+            }
         }
 
         function stopStatsPolling() {
@@ -3906,114 +3954,58 @@
         }
 
         async function fetchAndDisplayStats() {
+            try {
+                const response = await fetch(`/get_stats?source=${encodeURIComponent(currentSourceKey)}`);
+                const data = await response.json();
+                if (data.status === 'success') updateStatsDisplay(data);
+                else showToast(data.message || 'Could not load stats.', 'error');
+            } catch (error) {
+                console.error('Error fetching stats:', error);
+            }
+        }
+
+        function updateStatsDisplay(data) {
             const statsSection = document.getElementById('statsSection');
             const statsGrid = document.getElementById('statsGrid');
             const statsChartContainer = document.getElementById('statsChartContainer');
             const alertsList = document.getElementById('alertsList');
-            
-            if (!statsGrid || !statsChartContainer) {
-                console.error("Stats containers not found!");
-                return;
+            if (!statsGrid || !statsChartContainer) return;
+
+            if (data.image) {
+                statsChartContainer.innerHTML = `<img src="data:image/png;base64,${data.image}" alt="Analytics Chart" style="width: 100%; border-radius: 12px;">`;
             }
-
-            try {
-                const response = await fetch(`/get_stats?source=${encodeURIComponent(currentSourceKey)}`);
-                const data = await response.json();
-
-                if (data.status === 'success') {
-                    // Display chart
-                    if (data.image) {
-                        statsChartContainer.innerHTML = `<img src="data:image/png;base64,${data.image}" alt="Analytics Chart" style="width: 100%; border-radius: 12px;">`;
-                    } else if (!statsChartContainer.innerHTML.trim()) {
-                        statsChartContainer.innerHTML = '<div class="empty-state">Chart will appear after a few seconds of analysis.</div>';
+            if (data.stats) {
+                const s = data.stats;
+                statsGrid.innerHTML = `
+                    <div class="stat-card"><div class="stat-icon">⏱️</div><div class="stat-value">${s.duration}s</div><div class="stat-label">Duration</div></div>
+                    <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-value">${s.uniqueCustomers}</div><div class="stat-label">Unique Customers</div></div>
+                    <div class="stat-card"><div class="stat-icon">🎯</div><div class="stat-value">${s.totalDetections}</div><div class="stat-label">Total Detections</div></div>
+                    <div class="stat-card"><div class="stat-icon">⚡</div><div class="stat-value">${s.fps}</div><div class="stat-label">FPS</div></div>
+                    <div class="stat-card"><div class="stat-icon">👁️</div><div class="stat-value">${s.activeDetections}</div><div class="stat-label">Active Detections</div></div>
+                    <div class="stat-card"><div class="stat-icon">🖼️</div><div class="stat-value">${s.frameCount}</div><div class="stat-label">Frames Processed</div></div>
+                    <div class="stat-card"><div class="stat-icon">🧾</div><div class="stat-value">${s.queueLength}</div><div class="stat-label">Queue Length</div></div>
+                    <div class="stat-card"><div class="stat-icon">⏳</div><div class="stat-value">${s.queueWaitSeconds}s</div><div class="stat-label">Est. Wait</div></div>
+                    <div class="stat-card"><div class="stat-icon">🚦</div><div class="stat-value">${s.crowdLevel}</div><div class="stat-label">Crowd Level</div></div>
+                `;
+            }
+            if (data.alerts && data.alerts.length) {
+                data.alerts.forEach((alert) => {
+                    if (alert.id > lastAlertId) {
+                        showToast(`⚠️ ${alert.message}`, alert.level === 'error' ? 'error' : 'warning');
+                        lastAlertId = alert.id;
                     }
-
-                    // Display stat cards
-                    if (data.stats) {
-                        const stats = data.stats;
-                        statsGrid.innerHTML = `
-                            <div class="stat-card">
-                                <div class="stat-icon">⏱️</div>
-                                <div class="stat-value">${stats.duration}s</div>
-                                <div class="stat-label">Duration</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-icon">👥</div>
-                                <div class="stat-value">${stats.uniqueCustomers}</div>
-                                <div class="stat-label">Unique Customers</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-icon">🎯</div>
-                                <div class="stat-value">${stats.totalDetections}</div>
-                                <div class="stat-label">Total Detections</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-icon">⚡</div>
-                                <div class="stat-value">${stats.fps}</div>
-                                <div class="stat-label">FPS</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-icon">👁️</div>
-                                <div class="stat-value">${stats.activeDetections}</div>
-                                <div class="stat-label">Active Detections</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-icon">🖼️</div>
-                                <div class="stat-value">${stats.frameCount}</div>
-                                <div class="stat-label">Frames Processed</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-icon">🧾</div>
-                                <div class="stat-value">${stats.queueLength}</div>
-                                <div class="stat-label">Queue Length</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-icon">⏳</div>
-                                <div class="stat-value">${stats.queueWaitSeconds}s</div>
-                                <div class="stat-label">Est. Wait</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-icon">🚦</div>
-                                <div class="stat-value">${stats.crowdLevel}</div>
-                                <div class="stat-label">Crowd Level</div>
-                            </div>
-                        `;
-                    }
-
-                    if (data.alerts && data.alerts.length) {
-                        data.alerts.forEach((alert) => {
-                            if (alert.id > lastAlertId) {
-                                const type = alert.level === 'error' ? 'error' : 'warning';
-                                showToast(`⚠️ ${alert.message}`, type);
-                                lastAlertId = alert.id;
-                            }
-                        });
-
-                        if (alertsList) {
-                            alertsList.innerHTML = data.alerts.slice().reverse().map((alert) => {
-                                const label = alert.level === 'error' ? 'Error' : 'Alert';
-                                const timeLabel = new Date(alert.ts * 1000).toLocaleTimeString();
-                                return `
-                                    <div class="alert-item">
-                                        <strong>${label}:</strong>
-                                        <span>${alert.message}</span>
-                                        <span>${timeLabel}</span>
-                                    </div>
-                                `;
-                            }).join('');
-                        }
-                    } else if (alertsList) {
-                        alertsList.innerHTML = '<div class="alert-item">No alerts yet.</div>';
-                    }
-                    
-                    statsSection.classList.add('active');
-                } else {
-                    showToast(data.message || 'Could not load stats.', 'error');
+                });
+                if (alertsList) {
+                    alertsList.innerHTML = data.alerts.slice().reverse().map((alert) => {
+                        const label = alert.level === 'error' ? 'Error' : 'Alert';
+                        const timeLabel = new Date(alert.ts * 1000).toLocaleTimeString();
+                        return `<div class="alert-item"><strong>${label}:</strong><span>${alert.message}</span><span>${timeLabel}</span></div>`;
+                    }).join('');
                 }
-            } catch (error) {
-                console.error('Error fetching stats:', error);
-                showToast('Failed to fetch analytics.', 'error');
+            } else if (alertsList) {
+                alertsList.innerHTML = '<div class="alert-item">No alerts yet.</div>';
             }
+            statsSection.classList.add('active');
         }
 
         async function fetchAndDisplayHeatmap(options = {}) {
@@ -4066,26 +4058,29 @@
         const reportSourceSelect = document.getElementById('reportSourceSelect');
         const exportCsvBtn = document.getElementById('exportCsvBtn');
         const exportPdfBtn = document.getElementById('exportPdfBtn');
+        const reportStartDate = document.getElementById('reportStartDate');
+        const reportEndDate = document.getElementById('reportEndDate');
+
+        function getReportParams(format) {
+            const range = reportRange ? reportRange.value : 'daily';
+            const params = new URLSearchParams({ format, range });
+            if (reportSourceSelect && reportSourceSelect.value !== 'all') {
+                params.append('source', reportSourceSelect.value);
+            }
+            if (reportStartDate && reportStartDate.value) params.append('start_date', reportStartDate.value);
+            if (reportEndDate && reportEndDate.value) params.append('end_date', reportEndDate.value);
+            return params;
+        }
 
         if (exportCsvBtn) {
             exportCsvBtn.addEventListener('click', () => {
-                const range = reportRange ? reportRange.value : 'daily';
-                const params = new URLSearchParams({ format: 'csv', range });
-                if (reportSourceSelect && reportSourceSelect.value !== 'all') {
-                    params.append('source', reportSourceSelect.value);
-                }
-                window.location.href = `/export_report?${params.toString()}`;
+                window.location.href = `/export_report?${getReportParams('csv').toString()}`;
             });
         }
 
         if (exportPdfBtn) {
             exportPdfBtn.addEventListener('click', () => {
-                const range = reportRange ? reportRange.value : 'daily';
-                const params = new URLSearchParams({ format: 'pdf', range });
-                if (reportSourceSelect && reportSourceSelect.value !== 'all') {
-                    params.append('source', reportSourceSelect.value);
-                }
-                window.location.href = `/export_report?${params.toString()}`;
+                window.location.href = `/export_report?${getReportParams('pdf').toString()}`;
             });
         }
 
@@ -4102,6 +4097,8 @@
             let fontScale = parseFloat(localStorage.getItem('a11yFontScale') || '1');
             let speakEnabled = localStorage.getItem('a11ySpeakEnabled') === 'true';
 
+            const a11yToggle = document.getElementById('a11yToggle');
+            const a11yPanel = document.getElementById('a11yPanel');
             const decBtn = document.getElementById('fontDecrease');
             const resetBtn = document.getElementById('fontReset');
             const incBtn = document.getElementById('fontIncrease');
@@ -4158,6 +4155,28 @@
 
             applyFontScale();
             setSpeakEnabled(speakEnabled);
+
+            if (a11yToggle) {
+                a11yToggle.addEventListener('click', () => {
+                    const toolbar = document.getElementById('a11yToolbar');
+                    const isExpanded = toolbar.classList.toggle('is-expanded');
+                    a11yToggle.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+                });
+            }
+
+            if (a11yPanel) {
+                a11yPanel.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                });
+            }
+
+            document.addEventListener('click', (e) => {
+                const toolbar = document.getElementById('a11yToolbar');
+                if (toolbar && toolbar.classList.contains('is-expanded') && !toolbar.contains(e.target)) {
+                    toolbar.classList.remove('is-expanded');
+                    if (a11yToggle) a11yToggle.setAttribute('aria-expanded', 'false');
+                }
+            });
 
             if (decBtn) {
                 decBtn.addEventListener('click', () => {
@@ -4222,7 +4241,6 @@
                 }
             }
 
-
             function enableToolbarDrag() {
                 const toolbar = document.getElementById('a11yToolbar');
                 if (!toolbar) {
@@ -4266,21 +4284,39 @@
                 }
 
                 toolbar.addEventListener('pointerdown', (event) => {
-                    if (event.button !== 0 || !event.target.closest('.a11y-handle')) {
+                    if (event.button !== 0 || !event.target.closest('.a11y-toggle-btn')) {
                         return;
                     }
-                    event.preventDefault();
-                    dragging = true;
-                    toolbar.classList.add('is-dragging');
-                    toolbar._pointerId = event.pointerId;
-                    toolbar.setPointerCapture?.(event.pointerId);
+                    const dx = event.clientX;
+                    const dy = event.clientY;
+                    let moved = false;
                     const rect = toolbar.getBoundingClientRect();
-                    startX = event.clientX;
-                    startY = event.clientY;
+                    startX = dx;
+                    startY = dy;
                     originLeft = rect.left;
                     originTop = rect.top;
-                    document.addEventListener('pointermove', onPointerMove);
-                    document.addEventListener('pointerup', stopDragging);
+
+                    function onMove(e) {
+                        if (Math.abs(e.clientX - dx) > 4 || Math.abs(e.clientY - dy) > 4) {
+                            if (!moved) {
+                                moved = true;
+                                dragging = true;
+                                toolbar.classList.add('is-dragging');
+                                toolbar._pointerId = event.pointerId;
+                                toolbar.setPointerCapture?.(event.pointerId);
+                                document.addEventListener('pointermove', onPointerMove);
+                                document.addEventListener('pointerup', stopDragging);
+                            }
+                        }
+                    }
+
+                    function onUp() {
+                        document.removeEventListener('pointermove', onMove);
+                        document.removeEventListener('pointerup', onUp);
+                    }
+
+                    document.addEventListener('pointermove', onMove);
+                    document.addEventListener('pointerup', onUp);
                 });
             }
 
@@ -4288,5 +4324,15 @@
             enableToolbarDrag();
         })();
     </script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+        socket.on('stats_update', function(data) {
+            if (typeof handleSocketStats === 'function') handleSocketStats(data);
+        });
+        socket.on('connect', function() { console.log('WebSocket connected'); });
+    </script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='chatbot.css') }}">
+    <script src="{{ url_for('static', filename='chatbot.js') }}" defer></script>
 </body>
 </html>

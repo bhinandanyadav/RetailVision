@@ -6,6 +6,7 @@ import colorsys
 import threading
 import time
 import torch
+from collections import OrderedDict
 from analysis_state import current_analysis
 
 print("✅ Libraries imported successfully!")
@@ -17,15 +18,9 @@ MODEL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 MODEL_NAME = os.environ.get('MODEL_WEIGHTS', 'yolo11s.pt')
 model = None
 model_lock = threading.Lock()
-MODEL_CACHE = {}
-MODEL_PRELOAD_LIST = [
-    name.strip()
-    for name in os.environ.get(
-        'MODEL_PRELOAD_LIST',
-        'yolov8l.pt,yolov8m.pt,yolov8n.pt,yolo11l.pt,yolo11m.pt,yolo11s.pt,yolov8s.pt'
-    ).split(',')
-    if name.strip()
-]
+
+MAX_CACHED_MODELS = 3
+MODEL_CACHE = OrderedDict()
 
 MODEL_DEVICE = os.environ.get(
     'MODEL_DEVICE',
@@ -95,8 +90,13 @@ def load_model(model_name):
     with model_lock:
         MODEL_NAME = model_name
         if model_name in MODEL_CACHE:
+            MODEL_CACHE.move_to_end(model_name)
             model = MODEL_CACHE[model_name]
         else:
+            if len(MODEL_CACHE) >= MAX_CACHED_MODELS:
+                evicted_name, _ = MODEL_CACHE.popitem(last=False)
+                print(f"⚠️ Evicted cached model: {evicted_name}")
+
             model = YOLO(model_path)
             try:
                 model.to(MODEL_DEVICE)
@@ -117,10 +117,7 @@ def load_model(model_name):
 def init_model():
     global MODEL_NAME
     try:
-        for name in MODEL_PRELOAD_LIST:
-            load_model(name)
-        if MODEL_NAME not in MODEL_CACHE:
-            load_model(MODEL_NAME)
+        load_model(MODEL_NAME)
     except Exception:
         fallback_name = os.environ.get('MODEL_FALLBACK_WEIGHTS', 'yolov8s.pt')
         if fallback_name != MODEL_NAME:
@@ -182,7 +179,20 @@ def should_alert(alert_type, now):
 
 
 def send_webhook(event_payload):
-    return
+    import threading
+    def _post():
+        try:
+            import requests as _req
+            from analysis_state import current_analysis
+            webhook_urls = getattr(current_analysis, 'webhook_urls', [])
+            for url in webhook_urls:
+                try:
+                    _req.post(url, json=event_payload, timeout=5)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    threading.Thread(target=_post, daemon=True).start()
 
 
 def open_video_capture(source):
@@ -206,11 +216,15 @@ def configure_capture(capture):
         capture.set(cv2.CAP_PROP_FPS, TARGET_FPS)
 
 
+# Fix 1: CLAHE created once and reused
+_clahe = None
 def enhance_frame(frame):
+    global _clahe
+    if _clahe is None:
+        _clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    l = clahe.apply(l)
+    l = _clahe.apply(l)
     return cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
 
 def prepare_frame(frame):
@@ -292,19 +306,23 @@ def generate_frames(video_source):
             fps_window_start = now
             fps_frame_count = 0
         
+        # Fix 2: Read model reference without holding lock during inference
         with model_lock:
-            results = model.track(
-                prepare_frame(frame),
-                verbose=False,
-                conf=CONFIDENCE_THRESHOLD,
-                iou=IOU_THRESHOLD,
-                imgsz=IMG_SIZE,
-                classes=DETECT_CLASSES,
-                tracker=TRACKER_TYPE,
-                persist=True,
-                device=MODEL_DEVICE,
-                half=MODEL_DEVICE.startswith('cuda') and MODEL_HALF
-            )
+            current_model = model
+        if current_model is None:
+            break
+        results = current_model.track(
+            prepare_frame(frame),
+            verbose=False,
+            conf=CONFIDENCE_THRESHOLD,
+            iou=IOU_THRESHOLD,
+            imgsz=IMG_SIZE,
+            classes=DETECT_CLASSES,
+            tracker=TRACKER_TYPE,
+            persist=True,
+            device=MODEL_DEVICE,
+            half=MODEL_DEVICE.startswith('cuda') and MODEL_HALF
+        )
         
         active = 0
         centers = []
@@ -318,13 +336,14 @@ def generate_frames(video_source):
                 center = (int((x1+x2)/2), int((y1+y2)/2))
                 centers.append(center)
                 
+                # Fix 5: Use deque (no manual trimming needed)
                 current_analysis.track_history[tid].append(center)
-                if len(current_analysis.track_history[tid]) > TRAIL_LENGTH:
-                    current_analysis.track_history[tid] = current_analysis.track_history[tid][-TRAIL_LENGTH:]
                 
                 if tid not in current_analysis.all_track_ids:
                     current_analysis.all_track_ids.add(tid)
+                    current_analysis.track_last_seen[tid] = now
                 
+                current_analysis.track_last_seen[tid] = now
                 current_analysis.total_detections += 1
                 active += 1
                 
@@ -357,6 +376,13 @@ def generate_frames(video_source):
         current_analysis.queue_wait_seconds = queue_count * SERVICE_TIME_SEC
         current_analysis.crowd_level = active
         current_analysis.record_metrics(active, queue_count)
+
+        if current_analysis.frame_count % 60 == 0:
+            try:
+                from app import emit_stats_update
+                emit_stats_update()
+            except Exception:
+                pass
 
         now_ts = time.time()
         if QUEUE_ENABLED and queue_count >= QUEUE_THRESHOLD and should_alert('queue', now_ts):
@@ -451,19 +477,23 @@ def generate_heatmap(video_source):
             fps_window_start = now
             fps_frame_count = 0
         
+        # Fix 2: Read model reference without holding lock during inference
         with model_lock:
-            results = model.track(
-                prepare_frame(frame),
-                verbose=False,
-                conf=CONFIDENCE_THRESHOLD,
-                iou=IOU_THRESHOLD,
-                imgsz=IMG_SIZE,
-                classes=DETECT_CLASSES,
-                tracker=TRACKER_TYPE,
-                persist=True,
-                device=MODEL_DEVICE,
-                half=MODEL_DEVICE.startswith('cuda') and MODEL_HALF
-            )
+            current_model = model
+        if current_model is None:
+            break
+        results = current_model.track(
+            prepare_frame(frame),
+            verbose=False,
+            conf=CONFIDENCE_THRESHOLD,
+            iou=IOU_THRESHOLD,
+            imgsz=IMG_SIZE,
+            classes=DETECT_CLASSES,
+            tracker=TRACKER_TYPE,
+            persist=True,
+            device=MODEL_DEVICE,
+            half=MODEL_DEVICE.startswith('cuda') and MODEL_HALF
+        )
         
         current_analysis.heatmap_accumulator *= HEATMAP_DECAY
         
@@ -482,6 +512,9 @@ def generate_heatmap(video_source):
                 
                 if tid not in current_analysis.all_track_ids:
                     current_analysis.all_track_ids.add(tid)
+                    current_analysis.track_last_seen[tid] = now
+                
+                current_analysis.track_last_seen[tid] = now
                 
                 center_x = (x1 + x2) // 2
                 floor_h = int(bh * FLOOR_RATIO)
@@ -739,5 +772,58 @@ def cleanup():
         cap.release()
     cv2.destroyAllWindows()
     print("✅ Cleanup completed!")
+
+def generate_comparison_frames(source1, source2):
+    global stop_processing_flag
+    stop_processing_flag.clear()
+
+    cap1 = open_video_capture(source1)
+    cap2 = open_video_capture(source2)
+    configure_capture(cap1)
+    configure_capture(cap2)
+
+    if not cap1.isOpened():
+        print(f"❌ Could not open source 1: {source1}")
+        return
+    if not cap2.isOpened():
+        print(f"❌ Could not open source 2: {source2}")
+        cap1.release()
+        return
+
+    w1 = int(cap1.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h1 = int(cap1.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    w2 = int(cap2.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h2 = int(cap2.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    target_h = max(h1, h2)
+    target_w1 = int(w1 * target_h / h1)
+    target_w2 = int(w2 * target_h / h2)
+
+    while not stop_processing_flag.is_set():
+        ret1, frame1 = cap1.read()
+        ret2, frame2 = cap2.read()
+        if not ret1 or not ret2:
+            break
+
+        frame1 = cv2.resize(frame1, (target_w1, target_h))
+        frame2 = cv2.resize(frame2, (target_w2, target_h))
+
+        draw_text(frame1, "CAM 1", (10, 25), 0.7, (0, 255, 0), 2)
+        draw_text(frame2, "CAM 2", (10, 25), 0.7, (0, 255, 0), 2)
+
+        divider = 4 * np.ones((target_h, 3, 3), dtype=np.uint8)
+        combined = np.hstack((frame1, divider, frame2))
+
+        ret, buffer = cv2.imencode('.jpg', combined)
+        if not ret:
+            continue
+
+        frame_bytes = buffer.tobytes()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+
+    cap1.release()
+    cap2.release()
+    print("Comparison stopped.")
 
 

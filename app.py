@@ -1,8 +1,10 @@
-from flask import Flask, render_template, Response, request, jsonify, send_file, session, redirect, url_for  # pyright: ignore[reportMissingImports]
+from flask import Flask, render_template, Response, request, jsonify, send_file, session, redirect, url_for, g  # pyright: ignore[reportMissingImports]
+from flask_socketio import SocketIO, emit
 import os
 import base64
 import io
 import csv
+import threading
 import time
 import hmac
 import hashlib
@@ -16,10 +18,12 @@ import bcrypt
 import requests
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
-from model import generate_frames, generate_heatmap, stop_processing, get_analytics_data, apply_settings
+from model import generate_frames, generate_heatmap, generate_comparison_frames, stop_processing, get_analytics_data, apply_settings
 from analysis_state import current_analysis
+from chatbot import handle_chat_message
 
 app = Flask(__name__)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 load_dotenv()
 app.secret_key = os.environ.get('STORE_TRACKER_SECRET', 'store-tracker-dev-key')
 
@@ -44,7 +48,11 @@ UPLOAD_DB_PATH = os.path.abspath(
 UPLOAD_TEMP_DIR = os.path.join(tempfile.gettempdir(), 'store_tracker_uploads')
 ALLOWED_VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv'}
 UPLOAD_RETENTION_DAYS = int(os.environ.get('STORE_TRACKER_UPLOAD_RETENTION_DAYS', '7'))
+MAX_UPLOAD_SIZE_MB = 500
 db_video_cache = {}
+
+MAX_CACHE_ENTRIES = 20
+CACHE_TTL_SEC = 300
 
 video_source = 0  # default webcam
 current_mode = 'tracking'  # 'tracking' or 'heatmap'
@@ -60,6 +68,13 @@ def get_upload_db_connection():
     conn = sqlite3.connect(UPLOAD_DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def get_upload_db():
+    if 'upload_db' not in g:
+        g.upload_db = sqlite3.connect(UPLOAD_DB_PATH)
+        g.upload_db.row_factory = sqlite3.Row
+    return g.upload_db
 
 
 def ensure_upload_temp_dir():
@@ -92,6 +107,20 @@ def get_db_connection():
     conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def get_db():
+    if 'db' not in g:
+        g.db = sqlite3.connect(get_db_path())
+        g.db.row_factory = sqlite3.Row
+    return g.db
+
+
+@app.teardown_appcontext
+def close_db(exception):
+    db = g.pop('db', None)
+    if db is not None:
+        db.close()
 
 
 def set_pending_admin_session(user_row):
@@ -170,58 +199,95 @@ def init_db():
             )
             """
         )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS alert_thresholds (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    source_key TEXT NOT NULL UNIQUE,
-                    max_customers INTEGER,
-                    min_customers INTEGER,
-                    max_queue_length INTEGER,
-                    enabled INTEGER DEFAULT 1,
-                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS alert_thresholds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_key TEXT NOT NULL UNIQUE,
+                max_customers INTEGER,
+                min_customers INTEGER,
+                max_queue_length INTEGER,
+                enabled INTEGER DEFAULT 1,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS alerts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    source_key TEXT NOT NULL,
-                    alert_type TEXT NOT NULL,
-                    alert_value INTEGER,
-                    threshold_value INTEGER,
-                    message TEXT,
-                    severity TEXT DEFAULT 'medium',
-                    acknowledged INTEGER DEFAULT 0,
-                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_key TEXT NOT NULL,
+                alert_type TEXT NOT NULL,
+                alert_value INTEGER,
+                threshold_value INTEGER,
+                message TEXT,
+                severity TEXT DEFAULT 'medium',
+                acknowledged INTEGER DEFAULT 0,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS analytics_snapshots (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    source_key TEXT NOT NULL,
-                    timestamp TIMESTAMP NOT NULL,
-                    hour_of_day INTEGER,
-                    customers_count INTEGER,
-                    queue_length INTEGER,
-                    crowd_level INTEGER,
-                    dwell_time_avg REAL,
-                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS analytics_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_key TEXT NOT NULL,
+                timestamp TIMESTAMP NOT NULL,
+                hour_of_day INTEGER,
+                customers_count INTEGER,
+                queue_length INTEGER,
+                crowd_level INTEGER,
+                dwell_time_avg REAL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
-        
-            # Create indexes for performance
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_analytics_source_time ON analytics_history(source_key, captured_at)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_analytics_captured_at ON analytics_history(captured_at)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_source ON alerts(source_key)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_created ON alerts(created_at)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_snapshots_source_time ON analytics_snapshots(source_key, timestamp)")
-        conn.close()
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS webhook_configs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT 'default',
+                alert_types TEXT DEFAULT 'queue,crowd,restricted',
+                enabled INTEGER DEFAULT 1,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS email_schedules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                recipients TEXT NOT NULL,
+                schedule_type TEXT NOT NULL DEFAULT 'daily',
+                enabled INTEGER DEFAULT 1,
+                last_sent TIMESTAMP,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS push_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                token TEXT NOT NULL UNIQUE,
+                platform TEXT DEFAULT 'web',
+                enabled INTEGER DEFAULT 1,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+        # Create indexes for performance
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_analytics_source_time ON analytics_history(source_key, captured_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_analytics_captured_at ON analytics_history(captured_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_source ON alerts(source_key)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_created ON alerts(created_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_snapshots_source_time ON analytics_snapshots(source_key, timestamp)")
+    conn.close()
 init_db()
 ensure_upload_temp_dir()
 
@@ -363,6 +429,17 @@ def should_refresh_chart(source_key):
     return (now - cached.get('ts', 0)) >= CHART_INTERVAL_SEC
 
 
+def _evict_cache(cache, max_entries=MAX_CACHE_ENTRIES, ttl=CACHE_TTL_SEC):
+    now = time.time()
+    expired = [k for k, v in cache.items() if (now - v.get('ts', 0)) > ttl]
+    for k in expired:
+        del cache[k]
+    if len(cache) > max_entries:
+        oldest = sorted(cache.keys(), key=lambda k: cache[k].get('ts', 0))
+        for k in oldest[:len(cache) - max_entries]:
+            del cache[k]
+
+
 def record_analytics_snapshot(stats, source_key, mode):
     if not stats:
         return
@@ -403,151 +480,164 @@ def record_analytics_snapshot(stats, source_key, mode):
         if conn:
             conn.close()
 
-    @@def check_and_create_alerts(source_key, stats):
-        """Check thresholds and create alerts if exceeded"""
-        if not stats:
+
+def check_and_create_alerts(source_key, stats):
+    """Check thresholds and create alerts if exceeded"""
+    if not stats:
+        return
+    conn = None
+    try:
+        conn = get_db_connection()
+        threshold = conn.execute(
+            "SELECT * FROM alert_thresholds WHERE source_key = ? AND enabled = 1",
+            (source_key,)
+        ).fetchone()
+        if not threshold:
             return
-        conn = None
-        try:
-            conn = get_db_connection()
-            threshold = conn.execute(
-                "SELECT * FROM alert_thresholds WHERE source_key = ? AND enabled = 1",
-                (source_key,)
-            ).fetchone()
-            if not threshold:
-                return
-            customers = stats.get('uniqueCustomers', 0)
-            queue = stats.get('queueLength', 0)
-            if threshold['max_customers'] and customers > threshold['max_customers']:
-                create_alert(source_key, 'max_customers_exceeded', customers, threshold['max_customers'],
-                    f"Customers ({customers}) exceeded max ({threshold['max_customers']})", 'high')
-            if threshold['min_customers'] and customers < threshold['min_customers']:
-                create_alert(source_key, 'min_customers_threshold', customers, threshold['min_customers'],
-                    f"Customers ({customers}) below minimum ({threshold['min_customers']})", 'low')
-            if threshold['max_queue_length'] and queue > threshold['max_queue_length']:
-                create_alert(source_key, 'queue_length_exceeded', queue, threshold['max_queue_length'],
-                    f"Queue length ({queue}) exceeded max ({threshold['max_queue_length']})", 'medium')
-        finally:
-            if conn:
-                conn.close()
+        customers = stats.get('uniqueCustomers', 0)
+        queue = stats.get('queueLength', 0)
+        if threshold['max_customers'] and customers > threshold['max_customers']:
+            create_alert(source_key, 'max_customers_exceeded', customers, threshold['max_customers'],
+                f"Customers ({customers}) exceeded max ({threshold['max_customers']})", 'high')
+        if threshold['min_customers'] and customers < threshold['min_customers']:
+            create_alert(source_key, 'min_customers_threshold', customers, threshold['min_customers'],
+                f"Customers ({customers}) below minimum ({threshold['min_customers']})", 'low')
+        if threshold['max_queue_length'] and queue > threshold['max_queue_length']:
+            create_alert(source_key, 'queue_length_exceeded', queue, threshold['max_queue_length'],
+                f"Queue length ({queue}) exceeded max ({threshold['max_queue_length']})", 'medium')
+    finally:
+        if conn:
+            conn.close()
+
+
+def create_alert(source_key, alert_type, alert_value, threshold_value, message, severity='medium'):
+    """Create a new alert"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn:
+            conn.execute(
+                "INSERT INTO alerts (source_key, alert_type, alert_value, threshold_value, message, severity) VALUES (?, ?, ?, ?, ?, ?)",
+                (source_key, alert_type, alert_value, threshold_value, message, severity)
+            )
+    except Exception as exc:
+        print(f"Alert creation error: {exc}")
+    finally:
+        if conn:
+            conn.close()
+
+
 def get_role():
-    @@def create_alert(source_key, alert_type, alert_value, threshold_value, message, severity='medium'):
-        """Create a new alert"""
-        conn = None
-        try:
-            conn = get_db_connection()
-            with conn:
-                conn.execute(
-                    "INSERT INTO alerts (source_key, alert_type, alert_value, threshold_value, message, severity) VALUES (?, ?, ?, ?, ?, ?)",
-                    (source_key, alert_type, alert_value, threshold_value, message, severity)
-                )
-        except Exception as exc:
-            print(f"Alert creation error: {exc}")
-        finally:
-            if conn:
-                conn.close()
     return session.get('role')
-    @@def get_paginated_results(query, params, page=1, per_page=50):
-        """Helper function for pagination"""
-        offset = (page - 1) * per_page
-        conn = None
-        try:
-            conn = get_db_connection()
-            count_query = f"SELECT COUNT(*) as cnt FROM ({query})"
-            total = conn.execute(count_query, params).fetchone()['cnt']
-            paginated_query = f"{query} LIMIT ? OFFSET ?"
-            param_list = list(params) + [per_page, offset]
-            rows = conn.execute(paginated_query, param_list).fetchall()
-            return {
-                'rows': [dict(row) for row in rows],
-                'total': total,
-                'page': page,
-                'per_page': per_page,
-                'pages': (total + per_page - 1) // per_page
-            }
-        finally:
-            if conn:
-                conn.close()
 
-    @@def calculate_peak_hours(source_key, days=7):
-        """Calculate peak hours for a camera over last N days"""
-        conn = None
-        try:
-            conn = get_db_connection()
-            results = conn.execute(
-                """
-                SELECT 
-                    CAST(strftime('%H', captured_at) AS INTEGER) as hour,
-                    AVG(unique_customers) as avg_customers,
-                    MAX(unique_customers) as max_customers,
-                    COUNT(*) as sample_count
-                FROM analytics_history
-                WHERE source_key = ? AND captured_at > datetime('now', ?)
-                GROUP BY hour
-                ORDER BY avg_customers DESC
-                """,
-                (source_key, f"-{days} days")
-            ).fetchall()
-            return [dict(row) for row in results]
-        finally:
-            if conn:
-                conn.close()
 
-    @@def calculate_dwell_time(source_key, days=7):
-        """Estimate average dwell time from analytics"""
-        conn = None
-        try:
-            conn = get_db_connection()
-            results = conn.execute(
-                """
-                SELECT 
-                    AVG(CAST(active_detections AS FLOAT) / NULLIF(unique_customers, 0)) * 5 as avg_dwell_minutes,
-                    MAX(active_detections) as peak_active,
-                    AVG(unique_customers) as avg_customers
-                FROM analytics_history
-                WHERE source_key = ? AND captured_at > datetime('now', ?) AND unique_customers > 0
-                """,
-                (source_key, f"-{days} days")
-            ).fetchone()
-            return dict(results) if results else {}
-        finally:
-            if conn:
-                conn.close()
+def get_paginated_results(query, params, page=1, per_page=50):
+    """Helper function for pagination"""
+    offset = (page - 1) * per_page
+    conn = None
+    try:
+        conn = get_db_connection()
+        count_query = f"SELECT COUNT(*) as cnt FROM ({query})"
+        total = conn.execute(count_query, params).fetchone()['cnt']
+        paginated_query = f"{query} LIMIT ? OFFSET ?"
+        param_list = list(params) + [per_page, offset]
+        rows = conn.execute(paginated_query, param_list).fetchall()
+        return {
+            'rows': [dict(row) for row in rows],
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'pages': (total + per_page - 1) // per_page
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
+def calculate_peak_hours(source_key, days=7):
+    """Calculate peak hours for a camera over last N days"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        results = conn.execute(
+            """
+            SELECT 
+                CAST(strftime('%H', captured_at) AS INTEGER) as hour,
+                AVG(unique_customers) as avg_customers,
+                MAX(unique_customers) as max_customers,
+                COUNT(*) as sample_count
+            FROM analytics_history
+            WHERE source_key = ? AND captured_at > datetime('now', ?)
+            GROUP BY hour
+            ORDER BY avg_customers DESC
+            """,
+            (source_key, f"-{days} days")
+        ).fetchall()
+        return [dict(row) for row in results]
+    finally:
+        if conn:
+            conn.close()
+
+
+def calculate_dwell_time(source_key, days=7):
+    """Estimate average dwell time from analytics"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        results = conn.execute(
+            """
+            SELECT 
+                AVG(CAST(active_detections AS FLOAT) / NULLIF(unique_customers, 0)) * 5 as avg_dwell_minutes,
+                MAX(active_detections) as peak_active,
+                AVG(unique_customers) as avg_customers
+            FROM analytics_history
+            WHERE source_key = ? AND captured_at > datetime('now', ?) AND unique_customers > 0
+            """,
+            (source_key, f"-{days} days")
+        ).fetchone()
+        return dict(results) if results else {}
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_analytics_summary(source_key, range_type='daily'):
+    """Get comprehensive analytics summary"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        if range_type == 'hourly':
+            time_range = "-1 hour"
+        elif range_type == 'daily':
+            time_range = "-1 day"
+        elif range_type == 'weekly':
+            time_range = "-7 days"
+        else:
+            time_range = "-30 days"
+        summary = conn.execute(
+            """
+            SELECT 
+                COUNT(*) as total_samples,
+                AVG(unique_customers) as avg_customers,
+                MAX(unique_customers) as peak_customers,
+                MIN(unique_customers) as min_customers,
+                AVG(queue_length) as avg_queue,
+                MAX(queue_length) as max_queue,
+                AVG(crowd_level) as avg_crowd_level,
+                SUM(total_detections) as total_detections,
+                ROUND(SUM(duration_seconds) / 3600.0, 1) as total_hours
+            FROM analytics_history
+            WHERE source_key = ? AND captured_at > datetime('now', ?)
+            """,
+            (source_key, time_range)
+        ).fetchone()
+        return dict(summary) if summary else {}
+    finally:
+        if conn:
+            conn.close()
+
+
 def require_login():
-    @@def get_analytics_summary(source_key, range_type='daily'):
-        """Get comprehensive analytics summary"""
-        conn = None
-        try:
-            conn = get_db_connection()
-            if range_type == 'hourly':
-                time_range = "-1 hour"
-            elif range_type == 'daily':
-                time_range = "-1 day"
-            elif range_type == 'weekly':
-                time_range = "-7 days"
-            else:
-                time_range = "-30 days"
-            summary = conn.execute(
-                """
-                SELECT 
-                    COUNT(*) as total_samples,
-                    AVG(unique_customers) as avg_customers,
-                    MAX(unique_customers) as peak_customers,
-                    MIN(unique_customers) as min_customers,
-                    AVG(queue_length) as avg_queue,
-                    MAX(queue_length) as max_queue,
-                    AVG(crowd_level) as avg_crowd_level,
-                    SUM(total_detections) as total_detections,
-                    ROUND(SUM(duration_seconds) / 3600.0, 1) as total_hours
-                FROM analytics_history
-                WHERE source_key = ? AND captured_at > datetime('now', ?)
-                """,
-                (source_key, time_range)
-            ).fetchone()
-            return dict(summary) if summary else {}
-        finally:
-            if conn:
-                conn.close()
     return get_role() is not None
 
 
@@ -761,6 +851,15 @@ def home():
     if not require_login():
         return redirect(url_for('login'))
     return render_template("index.html", user_role=get_role())
+
+
+@app.route('/chatbot/message', methods=['POST'])
+def chatbot_message():
+    try:
+        return handle_chat_message(request)
+    except Exception as exc:
+        print(f"Chatbot handler error: {exc}")
+        return jsonify({'reply': 'Sorry, chatbot error.'}), 500
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -1087,6 +1186,9 @@ def upload_video():
         return jsonify({'status': 'error', 'message': 'Unsupported video format'}), 400
 
     content = file.read()
+    if len(content) > MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+        return jsonify({'status': 'error', 'message': f'File too large. Max {MAX_UPLOAD_SIZE_MB}MB.'}), 400
+
     video_id = store_uploaded_video(filename, content)
     source_key = f"db_{video_id}"
     temp_path = os.path.join(UPLOAD_TEMP_DIR, f"{source_key}_{filename}")
@@ -1096,6 +1198,7 @@ def upload_video():
         db_video_cache[source_key] = temp_path
     except OSError as exc:
         print(f"Upload cache write failed: {exc}")
+    del content
 
     cleanup_expired_uploads()
 
@@ -1194,6 +1297,29 @@ def video_feed():
             generate_frames(current_source),
             mimetype='multipart/x-mixed-replace; boundary=frame'
         )
+
+@app.route('/comparison_feed')
+def comparison_feed():
+    if not require_login():
+        return Response(status=401)
+    source1 = request.args.get('source1', '0')
+    source2 = request.args.get('source2', '1')
+
+    def _resolve_source(param):
+        if param.isdigit():
+            return int(param)
+        if param.startswith('db_'):
+            path = get_db_video_path(param)
+            if path and os.path.exists(path):
+                return path
+        return param
+
+    s1 = _resolve_source(source1)
+    s2 = _resolve_source(source2)
+    return Response(
+        generate_comparison_frames(s1, s2),
+        mimetype='multipart/x-mixed-replace; boundary=frame'
+    )
 
 
 @app.route('/switch_mode/<mode>', methods=['POST'])
@@ -1396,7 +1522,7 @@ def get_stats():
             if cached:
                 if should_snapshot(source_key):
                     record_analytics_snapshot(cached.get('stats'), source_key, current_mode)
-                @@                    check_and_create_alerts(source_key, cached.get('stats'))
+                    check_and_create_alerts(source_key, cached.get('stats'))
                 return jsonify(cached)
 
         stats = current_analysis.get_stats()
@@ -1406,17 +1532,22 @@ def get_stats():
             all_track_ids = current_analysis.all_track_ids
             all_positions = [pos for history in current_analysis.track_history.values() for pos in history]
             unique_positions = set(all_positions)
-            img_base64 = get_analytics_data(
-                stats['frameCount'],
-                stats['totalDetections'],
-                all_track_ids,
-                unique_positions,
-                stats['duration']
-            )
-            analytics_chart_cache[source_for_chart] = {
-                'ts': time.time(),
-                'image': img_base64
-            }
+            frame_count = stats['frameCount']
+            total_detections = stats['totalDetections']
+            duration = stats['duration']
+
+            def _gen_chart(fc, td, ati, up, dur, src):
+                try:
+                    chart = get_analytics_data(fc, td, ati, up, dur)
+                    _evict_cache(analytics_chart_cache)
+                    analytics_chart_cache[src] = {'ts': time.time(), 'image': chart}
+                except Exception as e:
+                    print(f"Background chart error: {e}")
+
+            threading.Thread(target=_gen_chart, args=(frame_count, total_detections, all_track_ids, unique_positions, duration, source_for_chart), daemon=True).start()
+            cached_chart = analytics_chart_cache.get(source_for_chart)
+            if cached_chart:
+                img_base64 = cached_chart.get('image')
         else:
             cached_chart = analytics_chart_cache.get(source_for_chart)
             if cached_chart:
@@ -1426,11 +1557,12 @@ def get_stats():
             'status': 'success',
             'image': img_base64,
             'stats': stats,
-            'alerts': current_analysis.alerts[-10:],
+            'alerts': list(current_analysis.alerts)[-10:],
             'lastAlertId': current_analysis.alerts[-1]['id'] if current_analysis.alerts else 0
         }
 
         if source_key:
+            _evict_cache(camera_stats_cache)
             camera_stats_cache[source_key] = payload
 
         source_for_snapshot = source_key or current_source_key
@@ -1584,38 +1716,37 @@ def parse_sqlite_timestamp(ts_value):
         return None
 
 
-def fetch_history_rows(report_range, source_key=None):
+def fetch_history_rows(report_range, source_key=None, start_date=None, end_date=None):
     range_map = {
         'daily': '-1 day',
         'weekly': '-7 day'
     }
-    range_key = report_range if report_range in range_map else 'daily'
+    if start_date and end_date:
+        time_filter = None
+    else:
+        range_key = report_range if report_range in range_map else 'daily'
+        time_filter = range_map[range_key]
     conn = None
     try:
         conn = get_db_connection()
+        base_query = """
+            SELECT id, captured_at, source_key, mode, frame_count, total_detections,
+                   unique_customers, active_detections, queue_length, crowd_level, duration_seconds
+            FROM analytics_history
+            WHERE 1=1
+        """
+        params = []
         if source_key:
-            rows = conn.execute(
-                """
-                SELECT id, captured_at, source_key, mode, frame_count, total_detections,
-                       unique_customers, active_detections, queue_length, crowd_level, duration_seconds
-                FROM analytics_history
-                WHERE source_key = ?
-                  AND captured_at >= datetime('now', ?)
-                ORDER BY captured_at ASC
-                """,
-                (source_key, range_map[range_key])
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """
-                SELECT id, captured_at, source_key, mode, frame_count, total_detections,
-                       unique_customers, active_detections, queue_length, crowd_level, duration_seconds
-                FROM analytics_history
-                WHERE captured_at >= datetime('now', ?)
-                ORDER BY captured_at ASC
-                """,
-                (range_map[range_key],)
-            ).fetchall()
+            base_query += " AND source_key = ?"
+            params.append(source_key)
+        if time_filter:
+            base_query += " AND captured_at >= datetime('now', ?)"
+            params.append(time_filter)
+        elif start_date and end_date:
+            base_query += " AND captured_at BETWEEN ? AND ?"
+            params.extend([start_date, end_date])
+        base_query += " ORDER BY captured_at ASC"
+        rows = conn.execute(base_query, params).fetchall()
         return [dict(row) for row in rows]
     finally:
         if conn:
@@ -1662,7 +1793,7 @@ def build_report_summary_from_history(rows):
 
 
 def build_alert_summary(max_alerts=10):
-    alerts = current_analysis.alerts or []
+    alerts = list(current_analysis.alerts) if current_analysis.alerts else []
     level_counts = {'warning': 0, 'error': 0}
     for alert in alerts:
         level = alert.get('level')
@@ -1690,7 +1821,9 @@ def export_report():
     report_range = request.args.get('range', 'daily')
     fmt = request.args.get('format', 'csv')
     source_key = request.args.get('source')
-    history_rows = fetch_history_rows(report_range, source_key)
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    history_rows = fetch_history_rows(report_range, source_key, start_date, end_date)
     use_history = len(history_rows) > 0
 
     if use_history:
@@ -1967,6 +2100,195 @@ def api_alert_thresholds():
     finally:
         if conn:
             conn.close()
+
+@app.route('/api/webhooks', methods=['GET', 'POST'])
+def api_webhooks():
+    if not require_login():
+        return jsonify({'error': 'Unauthorized'}), 401
+    if get_role() != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+    conn = None
+    try:
+        conn = get_db_connection()
+        if request.method == 'GET':
+            rows = conn.execute("SELECT * FROM webhook_configs ORDER BY id").fetchall()
+            return jsonify({'webhooks': [dict(r) for r in rows]})
+        data = request.get_json(silent=True) or {}
+        url = data.get('url', '').strip()
+        if not url:
+            return jsonify({'error': 'URL is required'}), 400
+        name = data.get('name', 'default')
+        alert_types = data.get('alert_types', 'queue,crowd,restricted')
+        enabled = 1 if data.get('enabled', True) else 0
+        with conn:
+            conn.execute(
+                "INSERT INTO webhook_configs (url, name, alert_types, enabled) VALUES (?, ?, ?, ?)",
+                (url, name, alert_types, enabled)
+            )
+        _refresh_webhook_urls()
+        log_audit_event('webhook_created', detail=url, user_id=session.get('user_id'), user_email=session.get('user_email'), ip_address=request.remote_addr)
+        return jsonify({'success': True, 'message': 'Webhook added'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+    finally:
+        if conn:
+            conn.close()
+
+@app.route('/api/webhooks/<int:webhook_id>', methods=['DELETE', 'PATCH'])
+def api_webhook_detail(webhook_id):
+    if not require_login():
+        return jsonify({'error': 'Unauthorized'}), 401
+    if get_role() != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+    conn = None
+    try:
+        conn = get_db_connection()
+        if request.method == 'DELETE':
+            with conn:
+                conn.execute("DELETE FROM webhook_configs WHERE id = ?", (webhook_id,))
+            _refresh_webhook_urls()
+            return jsonify({'success': True})
+        data = request.get_json(silent=True) or {}
+        fields = []
+        values = []
+        if 'url' in data:
+            fields.append('url = ?')
+            values.append(data['url'])
+        if 'name' in data:
+            fields.append('name = ?')
+            values.append(data['name'])
+        if 'alert_types' in data:
+            fields.append('alert_types = ?')
+            values.append(data['alert_types'])
+        if 'enabled' in data:
+            fields.append('enabled = ?')
+            values.append(1 if data['enabled'] else 0)
+        if fields:
+            fields.append('id = ?')
+            values.append(webhook_id)
+            with conn:
+                conn.execute(f"UPDATE webhook_configs SET {', '.join(fields)} WHERE id = ?", values)
+            _refresh_webhook_urls()
+        return jsonify({'success': True})
+    finally:
+        if conn:
+            conn.close()
+
+def _refresh_webhook_urls():
+    conn = None
+    try:
+        conn = get_db_connection()
+        rows = conn.execute("SELECT url FROM webhook_configs WHERE enabled = 1").fetchall()
+        current_analysis.webhook_urls = [r['url'] for r in rows]
+    except Exception:
+        current_analysis.webhook_urls = []
+    finally:
+        if conn:
+            conn.close()
+
+_refresh_webhook_urls()
+
+@app.route('/api/email-schedules', methods=['GET', 'POST'])
+def api_email_schedules():
+    if not require_login():
+        return jsonify({'error': 'Unauthorized'}), 401
+    if get_role() != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+    conn = None
+    try:
+        conn = get_db_connection()
+        if request.method == 'GET':
+            rows = conn.execute("SELECT * FROM email_schedules WHERE user_id = ?", (session.get('user_id'),)).fetchall()
+            return jsonify({'schedules': [dict(r) for r in rows]})
+        data = request.get_json(silent=True) or {}
+        recipients = data.get('recipients', '').strip()
+        if not recipients:
+            return jsonify({'error': 'Recipients required'}), 400
+        schedule_type = data.get('schedule_type', 'daily')
+        enabled = 1 if data.get('enabled', True) else 0
+        with conn:
+            conn.execute(
+                "INSERT INTO email_schedules (user_id, recipients, schedule_type, enabled) VALUES (?, ?, ?, ?)",
+                (session.get('user_id'), recipients, schedule_type, enabled)
+            )
+        return jsonify({'success': True, 'message': 'Schedule created'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+    finally:
+        if conn:
+            conn.close()
+
+@app.route('/api/email-schedules/<int:sid>', methods=['DELETE'])
+def api_email_schedule_delete(sid):
+    if not require_login() or get_role() != 'admin':
+        return jsonify({'error': 'Unauthorized'}), 403
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn:
+            conn.execute("DELETE FROM email_schedules WHERE id = ? AND user_id = ?", (sid, session.get('user_id')))
+        return jsonify({'success': True})
+    finally:
+        if conn:
+            conn.close()
+
+@app.route('/api/push/register', methods=['POST'])
+def api_push_register():
+    if not require_login():
+        return jsonify({'error': 'Unauthorized'}), 401
+    data = request.get_json(silent=True) or {}
+    token = data.get('token', '').strip()
+    if not token:
+        return jsonify({'error': 'Token required'}), 400
+    platform = data.get('platform', 'web')
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO push_tokens (user_id, token, platform) VALUES (?, ?, ?)",
+                (session.get('user_id'), token, platform)
+            )
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+    finally:
+        if conn:
+            conn.close()
+
+@app.route('/api/push/unregister', methods=['POST'])
+def api_push_unregister():
+    if not require_login():
+        return jsonify({'error': 'Unauthorized'}), 401
+    data = request.get_json(silent=True) or {}
+    token = data.get('token', '')
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn:
+            conn.execute("DELETE FROM push_tokens WHERE token = ? AND user_id = ?", (token, session.get('user_id')))
+        return jsonify({'success': True})
+    finally:
+        if conn:
+            conn.close()
+
+@socketio.on('connect')
+def handle_connect():
+    emit('connected', {'status': 'ok'})
+
+@socketio.on('subscribe_source')
+def handle_subscribe(data):
+    source = data.get('source', '0')
+    emit('subscribed', {'source': source})
+
+def emit_stats_update():
+    try:
+        stats = current_analysis.get_stats()
+        stats['alerts'] = list(current_analysis.alerts)[-5:]
+        socketio.emit('stats_update', stats)
+    except Exception:
+        pass
+
 if __name__ == "__main__":
     debug_mode = os.environ.get('FLASK_DEBUG', '0').lower() in ('1', 'true', 'yes', 'on')
     host = os.environ.get('FLASK_HOST', '0.0.0.0')
