@@ -6,7 +6,7 @@
     <title>Retail Store Analytics - Motion Tracking & Heatmap</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -180,7 +180,8 @@
         }
 
         body {
-            font-family: 'Work Sans', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
             background: radial-gradient(circle at top left, rgba(14, 165, 233, 0.12), transparent 45%),
                         radial-gradient(circle at 30% 85%, rgba(249, 115, 22, 0.12), transparent 40%),
                         var(--bg);
@@ -262,18 +263,15 @@
         }
 
         .logo-text h1 {
-            font-family: 'Space Grotesk', 'Work Sans', sans-serif;
+            font-family: 'JetBrains Mono', monospace;
             font-size: 1.5rem;
             font-weight: 700;
-            background: var(--gradient-primary);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--text-primary);
         }
 
         .logo-text span {
             font-size: 0.85rem;
-            color: var(--text-muted);
+            color: var(--text-secondary);
         }
 
         .nav-links {
@@ -284,7 +282,8 @@
         .nav-links a {
             color: var(--text-secondary);
             text-decoration: none;
-            font-weight: 500;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
             transition: all 0.3s ease;
             position: relative;
             padding: 5px 0;
@@ -343,20 +342,62 @@
         }
 
         .theme-toggle {
-            border: 1px solid var(--panel-border);
-            background: var(--panel-strong);
-            color: var(--text-primary);
-            padding: 8px 14px;
-            border-radius: 999px;
-            font-weight: 600;
+            position: relative;
+            width: 44px;
+            height: 20px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #1e293b, #334155);
+            border: 1px solid rgba(148, 163, 184, 0.12);
             cursor: pointer;
+            flex-shrink: 0;
+            padding: 0;
             transition: all 0.3s ease;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
+        }
+
+        .theme-toggle-thumb {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+            transition: all 0.35s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+            z-index: 2;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+        }
+
+        [data-theme="light"] .theme-toggle {
+            background: linear-gradient(135deg, #e2e8f0, #f1f5f9);
+            border-color: rgba(15, 23, 42, 0.08);
+        }
+
+        [data-theme="light"] .theme-toggle-thumb {
+            left: 26px;
+            background: linear-gradient(135deg, #64748b, #475569);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
         }
 
         .theme-toggle:hover {
-            border-color: rgba(113, 116, 118, 0.6);
-            box-shadow: var(--shadow-soft);
             transform: translateY(-1px);
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.2), 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        .theme-toggle:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 2px;
+        }
+
+        .logout-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: color 0.3s ease;
+        }
+
+        .logout-link:hover {
+            color: var(--text-primary);
         }
 
         .status-dot {
@@ -387,7 +428,7 @@
         }
 
         .hero h1 {
-            font-family: 'Space Grotesk', 'Work Sans', sans-serif;
+            font-family: 'JetBrains Mono', monospace;
             font-size: clamp(2rem, 4vw, 3.2rem);
             font-weight: 700;
             margin-bottom: 16px;
@@ -414,50 +455,116 @@
         }
 
         .quick-steps {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 18px;
-            margin: 20px auto 10px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 32px;
+            margin: 30px auto 10px;
             max-width: 1100px;
+            position: relative;
         }
 
         .quick-step-card {
+            flex: 1;
             background: var(--panel);
             border: 1px solid var(--panel-border);
-            border-radius: 18px;
-            padding: 18px 20px;
-            text-align: left;
-            box-shadow: var(--shadow-soft);
-            transition: transform 0.3s ease, border-color 0.3s ease;
+            border-radius: 20px;
+            padding: 28px 24px 24px;
+            text-align: center;
+            position: relative;
+            box-shadow: 0 10px 30px rgba(2, 6, 23, 0.2);
+            transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            opacity: 0;
+            animation: stepFadeIn 0.6s ease forwards;
         }
+
+        .quick-step-card:nth-child(1) { animation-delay: 0.1s; }
+        .quick-step-card:nth-child(2) { animation-delay: 0.25s; }
+        .quick-step-card:nth-child(3) { animation-delay: 0.4s; }
 
         .quick-step-card:hover {
-            transform: translateY(-4px);
-            border-color: rgba(14, 165, 233, 0.4);
+            transform: translateY(-8px);
+            border-color: rgba(14, 165, 233, 0.5);
+            box-shadow: 0 20px 50px rgba(2, 6, 23, 0.4);
         }
 
-        .quick-step-title {
+        .quick-step-card:not(:last-child)::after {
+            content: '→';
+            position: absolute;
+            right: -22px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.6rem;
+            color: rgba(14, 165, 233, 0.5);
+            z-index: 2;
+            animation: arrowPulse 2s ease-in-out infinite;
+            font-weight: 400;
+        }
+
+        .quick-step-card:nth-child(1):not(:last-child)::after { animation-delay: 0.1s; }
+        .quick-step-card:nth-child(2):not(:last-child)::after { animation-delay: 0.5s; }
+
+        .quick-step-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 16px;
+            border-radius: 18px;
             display: flex;
             align-items: center;
-            gap: 10px;
-            font-weight: 600;
-            margin-bottom: 8px;
+            justify-content: center;
+            font-size: 30px;
+            transition: transform 0.4s ease, box-shadow 0.4s ease;
+            position: relative;
         }
 
-        .quick-step-title span {
-            width: 34px;
-            height: 34px;
-            display: inline-flex;
+        .quick-step-card:nth-child(1) .quick-step-icon { background: linear-gradient(135deg, rgba(14, 165, 233, 0.3), rgba(14, 165, 233, 0.08)); }
+        .quick-step-card:nth-child(2) .quick-step-icon { background: linear-gradient(135deg, rgba(249, 115, 22, 0.3), rgba(249, 115, 22, 0.08)); }
+        .quick-step-card:nth-child(3) .quick-step-icon { background: linear-gradient(135deg, rgba(52, 211, 153, 0.3), rgba(52, 211, 153, 0.08)); }
+
+        .quick-step-card:hover .quick-step-icon {
+            transform: scale(1.1) rotate(-6deg);
+        }
+
+        .quick-step-badge {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 10px;
-            background: rgba(14, 165, 233, 0.2);
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: #fff;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .quick-step-card:nth-child(1) .quick-step-badge { background: #0ea5e9; }
+        .quick-step-card:nth-child(2) .quick-step-badge { background: #f97316; }
+        .quick-step-card:nth-child(3) .quick-step-badge { background: #34d399; }
+
+        .quick-step-title {
+            font-weight: 700;
+            margin-bottom: 10px;
         }
 
         .quick-step-card p {
             color: var(--text-muted);
-            font-size: 0.92rem;
-            line-height: 1.5;
+            font-size: 0.88rem;
+            line-height: 1.6;
+            font-weight: 400;
+        }
+
+        @keyframes stepFadeIn {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes arrowPulse {
+            0%, 100% { opacity: 0.3; transform: translateY(-50%) translateX(0); }
+            50% { opacity: 0.8; transform: translateY(-50%) translateX(4px); }
         }
 
         .tech-badges {
@@ -1006,7 +1113,8 @@
             padding: 14px 30px;
             border-radius: 12px;
             font-size: 1rem;
-            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
             cursor: pointer;
             transition: all 0.3s ease;
             border: none;
@@ -1084,6 +1192,8 @@
         }
 
         .stat-card {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
             background: var(--panel);
             padding: 25px;
             border-radius: 20px;
@@ -1132,8 +1242,9 @@
         .stat-card:nth-child(4) .stat-icon { background: rgba(14, 165, 233, 0.2); }
 
         .stat-value {
+            font-family: 'JetBrains Mono', monospace;
             font-size: 2rem;
-            font-weight: 800;
+            font-weight: 700;
             margin-bottom: 5px;
         }
 
@@ -1304,7 +1415,7 @@
             background: var(--panel-strong);
             padding: 8px 16px;
             border-radius: 8px;
-            font-family: monospace;
+            font-family: 'JetBrains Mono', monospace;
             color: var(--cyan);
             border: 1px solid var(--panel-border);
         }
@@ -1315,7 +1426,7 @@
             padding: 8px 16px;
             border-radius: 8px;
             color: var(--text-primary);
-            font-family: monospace;
+            font-family: 'JetBrains Mono', monospace;
             width: 100px;
             text-align: center;
         }
@@ -1342,7 +1453,7 @@
             background: var(--panel-strong);
             padding: 6px 12px;
             border-radius: 8px;
-            font-family: monospace;
+            font-family: 'JetBrains Mono', monospace;
             color: var(--cyan);
             border: 1px solid var(--panel-border);
             min-width: 64px;
@@ -1552,6 +1663,7 @@
         }
 
         .data-table {
+            font-family: 'JetBrains Mono', monospace;
             width: 100%;
             border-collapse: collapse;
             font-size: 0.9rem;
@@ -1581,7 +1693,7 @@
 
         .data-table th {
             color: var(--text-primary);
-            font-weight: 600;
+            font-weight: 700;
             font-size: 0.85rem;
             letter-spacing: 0.02em;
             text-transform: uppercase;
@@ -1732,7 +1844,12 @@
             }
 
             .quick-steps {
-                grid-template-columns: 1fr;
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .quick-step-card:not(:last-child)::after {
+                display: none;
             }
 
             .data-grid {
@@ -1841,7 +1958,13 @@
             }
 
             .quick-steps {
-                gap: 12px;
+                gap: 16px;
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .quick-step-card:not(:last-child)::after {
+                display: none;
             }
 
             .input-option,
@@ -1931,36 +2054,131 @@
         }
 
         /* Notification Toast */
-        .toast {
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        .skeleton {
+            background: linear-gradient(90deg, rgba(148,163,184,0.06) 25%, rgba(148,163,184,0.15) 50%, rgba(148,163,184,0.06) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s ease-in-out infinite;
+            border-radius: 8px;
+        }
+
+        .skeleton-card {
+            background: var(--panel);
+            padding: 25px;
+            border-radius: 20px;
+            border: 1px solid var(--panel-border);
+            text-align: center;
+        }
+
+        .skeleton-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            margin: 0 auto 15px;
+        }
+
+        .skeleton-text {
+            height: 14px;
+            border-radius: 6px;
+            margin: 0 auto 8px;
+        }
+
+        .skeleton-text.wide { width: 75%; }
+        .skeleton-text.medium { width: 55%; }
+        .skeleton-text.narrow { width: 35%; }
+
+        .skeleton-row {
+            display: table-row;
+        }
+
+        .skeleton-row td {
+            padding: 12px 8px !important;
+        }
+
+        .skeleton-cell {
+            height: 12px;
+            border-radius: 6px;
+        }
+
+        #toast-container {
             position: fixed;
-            bottom: 30px;
-            right: 30px;
+            bottom: 20px;
+            right: 20px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+        }
+
+        #toast-container .toast {
+            pointer-events: auto;
+            display: flex;
+            align-items: center;
+            gap: 12px;
             background: var(--panel-strong);
-            padding: 20px 30px;
-            border-radius: 15px;
+            padding: 14px 18px;
+            border-radius: 14px;
             border: 1px solid var(--panel-border);
             box-shadow: var(--shadow-soft);
-            display: none;
-            align-items: center;
-            gap: 15px;
-            z-index: 1000;
             animation: slideIn 0.3s ease;
+            min-width: 280px;
+            max-width: 420px;
+            position: relative;
+            overflow: hidden;
         }
 
-        .toast.active {
-            display: flex;
+        #toast-container .toast.success { border-color: var(--success); }
+        #toast-container .toast.error { border-color: var(--secondary); }
+        #toast-container .toast.warning { border-color: var(--orange); }
+        #toast-container .toast.info { border-color: var(--primary); }
+
+        #toast-container .toast.fade-out {
+            animation: fadeOut 0.3s ease forwards;
         }
 
-        .toast.success {
-            border-color: var(--success);
+        .toast-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0 2px;
+            line-height: 1;
+            flex-shrink: 0;
+            font-family: inherit;
         }
 
-        .toast.error {
-            border-color: var(--secondary);
+        .toast-close:hover {
+            color: var(--text-primary);
         }
 
-        .toast.warning {
-            border-color: var(--orange);
+        .toast-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            background: var(--text-muted);
+            opacity: 0.3;
+            border-radius: 0 0 0 14px;
+        }
+
+        .toast.success .toast-progress { background: var(--success); }
+        .toast.error .toast-progress { background: var(--secondary); }
+        .toast.warning .toast-progress { background: var(--orange); }
+        .toast.info .toast-progress { background: var(--primary); }
+
+        @keyframes toastShrink {
+            from { width: 100%; }
+            to { width: 0%; }
+        }
+
+        @keyframes fadeOut {
+            to { opacity: 0; transform: translateY(-8px); }
         }
 
         .alerts-panel {
@@ -1972,6 +2190,8 @@
         }
 
         .alerts-panel h4 {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
             font-size: 1.05rem;
             margin-bottom: 10px;
             color: var(--orange);
@@ -1990,6 +2210,8 @@
             border-radius: 10px;
             background: var(--bg-soft);
             border: 1px solid var(--panel-border);
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
             font-size: 0.9rem;
             color: var(--text-secondary);
         }
@@ -2054,12 +2276,14 @@
             </nav>
             <div class="header-actions">
                 <span class="role-badge" id="roleBadge">Role</span>
-                <button class="theme-toggle" id="themeToggle" type="button" aria-pressed="false">Light</button>
+                <button class="theme-toggle" id="themeToggle" type="button" aria-pressed="false" aria-label="Toggle theme">
+                    <span class="theme-toggle-thumb"></span>
+                </button>
                 <div class="status-badge">
                     <div class="status-dot"></div>
                     <span id="headerStatusText" role="status" aria-live="polite">System Ready</span>
                 </div>
-                <a class="theme-toggle" href="/logout">Logout</a>
+                <a class="logout-link" href="/logout">Logout</a>
             </div>
         </div>
     </header>
@@ -2073,15 +2297,27 @@
 
             <div class="quick-steps">
                 <div class="quick-step-card">
-                    <div class="quick-step-title"><span>1</span>Choose a source</div>
+                    <div class="quick-step-icon">
+                        🎥
+                        <span class="quick-step-badge">1</span>
+                    </div>
+                    <div class="quick-step-title">Choose a source</div>
                     <p>Select Live Camera for in-store tracking or upload a recorded video for analysis.</p>
                 </div>
                 <div class="quick-step-card">
-                    <div class="quick-step-title"><span>2</span>Pick a mode</div>
+                    <div class="quick-step-icon">
+                        ⚙️
+                        <span class="quick-step-badge">2</span>
+                    </div>
+                    <div class="quick-step-title">Pick a mode</div>
                     <p>Use Tracking for IDs and counts, or Heatmap to visualize floor traffic density.</p>
                 </div>
                 <div class="quick-step-card">
-                    <div class="quick-step-title"><span>3</span>Start analysis</div>
+                    <div class="quick-step-icon">
+                        🚀
+                        <span class="quick-step-badge">3</span>
+                    </div>
+                    <div class="quick-step-title">Start analysis</div>
                     <p>Press Start to begin streaming and watch stats update in real time.</p>
                 </div>
             </div>
@@ -2246,7 +2482,14 @@
         <!-- Stats Section -->
         <section class="stats-section" id="statsSection">
             <div class="stats-grid" id="statsGrid">
-                <!-- Stat cards will be loaded here -->
+                <div class="skeleton-card"><div class="skeleton skeleton-icon"></div><div class="skeleton skeleton-text wide"></div><div class="skeleton skeleton-text narrow" style="height:10px"></div></div>
+                <div class="skeleton-card"><div class="skeleton skeleton-icon"></div><div class="skeleton skeleton-text wide"></div><div class="skeleton skeleton-text narrow" style="height:10px"></div></div>
+                <div class="skeleton-card"><div class="skeleton skeleton-icon"></div><div class="skeleton skeleton-text wide"></div><div class="skeleton skeleton-text narrow" style="height:10px"></div></div>
+                <div class="skeleton-card"><div class="skeleton skeleton-icon"></div><div class="skeleton skeleton-text wide"></div><div class="skeleton skeleton-text narrow" style="height:10px"></div></div>
+                <div class="skeleton-card"><div class="skeleton skeleton-icon"></div><div class="skeleton skeleton-text wide"></div><div class="skeleton skeleton-text narrow" style="height:10px"></div></div>
+                <div class="skeleton-card"><div class="skeleton skeleton-icon"></div><div class="skeleton skeleton-text wide"></div><div class="skeleton skeleton-text narrow" style="height:10px"></div></div>
+                <div class="skeleton-card"><div class="skeleton skeleton-icon"></div><div class="skeleton skeleton-text wide"></div><div class="skeleton skeleton-text narrow" style="height:10px"></div></div>
+                <div class="skeleton-card"><div class="skeleton skeleton-icon"></div><div class="skeleton skeleton-text wide"></div><div class="skeleton skeleton-text narrow" style="height:10px"></div></div>
             </div>
             <div class="stats-chart-container" id="statsChartContainer" style="margin-top: 20px;">
                 <!-- Chart will be loaded here -->
@@ -2326,7 +2569,10 @@
                                     </tr>
                                 </thead>
                                 <tbody id="cameraTableBody">
-                                    <tr><td colspan="5" class="empty-state">No cameras yet.</td></tr>
+                                    <tr class="skeleton-row"><td colspan="5"><div class="skeleton skeleton-cell" style="width:85%"></div></td></tr>
+                                    <tr class="skeleton-row"><td colspan="5"><div class="skeleton skeleton-cell" style="width:70%"></div></td></tr>
+                                    <tr class="skeleton-row"><td colspan="5"><div class="skeleton skeleton-cell" style="width:90%"></div></td></tr>
+                                    <tr class="skeleton-row"><td colspan="5"><div class="skeleton skeleton-cell" style="width:60%"></div></td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -2374,7 +2620,10 @@
                                     </tr>
                                 </thead>
                                 <tbody id="analyticsTableBody">
-                                    <tr><td colspan="8" class="empty-state">No history yet.</td></tr>
+                                    <tr class="skeleton-row"><td colspan="8"><div class="skeleton skeleton-cell" style="width:75%"></div></td></tr>
+                                    <tr class="skeleton-row"><td colspan="8"><div class="skeleton skeleton-cell" style="width:60%"></div></td></tr>
+                                    <tr class="skeleton-row"><td colspan="8"><div class="skeleton skeleton-cell" style="width:85%"></div></td></tr>
+                                    <tr class="skeleton-row"><td colspan="8"><div class="skeleton skeleton-cell" style="width:55%"></div></td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -2406,7 +2655,10 @@
                                     </tr>
                                 </thead>
                                 <tbody id="auditTableBody">
-                                    <tr><td colspan="5" class="empty-state">No logs yet.</td></tr>
+                                    <tr class="skeleton-row"><td colspan="5"><div class="skeleton skeleton-cell" style="width:80%"></div></td></tr>
+                                    <tr class="skeleton-row"><td colspan="5"><div class="skeleton skeleton-cell" style="width:65%"></div></td></tr>
+                                    <tr class="skeleton-row"><td colspan="5"><div class="skeleton skeleton-cell" style="width:90%"></div></td></tr>
+                                    <tr class="skeleton-row"><td colspan="5"><div class="skeleton skeleton-cell" style="width:50%"></div></td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -2642,11 +2894,7 @@
         </div>
     </div>
 
-    <!-- Toast Notification -->
-    <div class="toast" id="toast" role="status" aria-live="polite">
-        <span class="toast-icon">✅</span>
-        <span class="toast-message" id="toastMessage">Success!</span>
-    </div>
+    <div id="toast-container"></div>
 
     <script>
         // State Management
@@ -2692,7 +2940,6 @@
         function updateThemeLabel() {
             const isLight = document.documentElement.getAttribute('data-theme') === 'light';
             if (themeToggle) {
-                themeToggle.textContent = isLight ? 'Dark' : 'Light';
                 themeToggle.setAttribute('aria-pressed', isLight ? 'true' : 'false');
             }
         }
@@ -3005,7 +3252,7 @@
                 ctx.lineWidth = 2;
                 ctx.strokeRect(x, y, w, h);
                 ctx.fillStyle = color;
-                ctx.font = '12px Work Sans, sans-serif';
+                ctx.font = '12px JetBrains Mono, sans-serif';
                 ctx.fillText(label, x + 6, Math.max(14, y - 6));
             };
 
@@ -3550,17 +3797,31 @@
         stopCamera();
 
 
-        function showToast(message, type = 'success') {
-            const toast = document.getElementById('toast');
-            const toastMessage = document.getElementById('toastMessage');
-            
-            toast.classList.remove('success', 'error', 'warning');
-            toast.classList.add(type, 'active');
-            toastMessage.textContent = message;
-            
-            setTimeout(() => {
-                toast.classList.remove('active');
-            }, 3000);
+        function showToast(message, type = 'success', duration = 3500) {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                <span class="toast-icon">${icons[type] || 'ℹ️'}</span>
+                <span class="toast-message">${message}</span>
+                <button class="toast-close" aria-label="Dismiss">×</button>
+                <div class="toast-progress"></div>
+            `;
+            container.appendChild(toast);
+            if (duration > 0) {
+                const progress = toast.querySelector('.toast-progress');
+                if (progress) progress.style.animation = `toastShrink ${duration}ms linear forwards`;
+                setTimeout(() => {
+                    toast.classList.add('fade-out');
+                    setTimeout(() => { if (toast.parentNode) toast.remove(); }, 300);
+                }, duration);
+            }
+            toast.querySelector('.toast-close').addEventListener('click', () => {
+                toast.classList.add('fade-out');
+                setTimeout(() => { if (toast.parentNode) toast.remove(); }, 300);
+            });
         }
 
         function formatTimestamp(value) {
