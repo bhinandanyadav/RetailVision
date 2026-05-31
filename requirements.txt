@@ -52,3 +52,7 @@ waitress
 
 # Database + Auth
 bcrypt
+
+# ONVIF Support
+onvif-zeep
+zeep

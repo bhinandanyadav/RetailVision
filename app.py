@@ -1270,6 +1270,10 @@ def video_feed():
     if source_param.isdigit():
         current_source = int(source_param)
         current_source_key = source_param
+    elif source_param.startswith('onvif://'):
+        # Handle ONVIF sources
+        current_source = source_param
+        current_source_key = source_param
     else:
         video_path = None
         if source_param.startswith('db_'):
@@ -1277,6 +1281,7 @@ def video_feed():
         else:
             video_path = os.path.join(UPLOAD_TEMP_DIR, source_param)
             if not os.path.exists(video_path):
+
                 video_path = None
 
         if video_path and os.path.exists(video_path):

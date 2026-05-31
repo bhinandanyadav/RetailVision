@@ -8,6 +8,16 @@ import time
 import torch
 from collections import OrderedDict
 from analysis_state import current_analysis
+import logging
+
+logger = logging.getLogger(__name__)
+
+# ONVIF support
+try:
+    from onvif_utils.utils import is_onvif_available, get_onvif_manager
+    ONVIF_SUPPORT = True
+except ImportError:
+    ONVIF_SUPPORT = False
 
 print("✅ Libraries imported successfully!")
 
@@ -196,6 +206,52 @@ def send_webhook(event_payload):
 
 
 def open_video_capture(source):
+    # Handle ONVIF devices
+    if isinstance(source, str) and source.startswith("onvif://"):
+        if not ONVIF_SUPPORT:
+            raise ImportError("ONVIF support not available. Install onvif-zeep and zeep.")
+        
+        # Parse ONVIF URI: onvif://username:password@hostname:port
+        # For now, we'll get the stream URI from the ONVIF manager
+        onvif_manager = get_onvif_manager()
+        
+        # Extract credentials and hostname from URI
+        # Remove onvif:// prefix
+        uri_part = source[8:]  # Remove "onvif://"
+        
+        # Split credentials from host
+        if "@" in uri_part:
+            creds_part, host_part = uri_part.split("@", 1)
+            if ":" in creds_part:
+                username, password = creds_part.split(":", 1)
+            else:
+                username, password = creds_part, ""
+        else:
+            host_part = uri_part
+            username, password = "", ""
+        
+        # Split host and port
+        if ":" in host_part:
+            hostname, port_str = host_part.split(":", 1)
+            port = int(port_str)
+        else:
+            hostname = host_part
+            port = 80
+        
+        # Connect to device
+        camera = onvif_manager.connect_device(hostname, port, username, password)
+        if camera is None:
+            raise ConnectionError(f"Failed to connect to ONVIF device {hostname}:{port}")
+        
+        # Get stream URI
+        stream_info = onvif_manager.get_stream_uri(f"{hostname}:{port}")
+        if stream_info is None:
+            raise ConnectionError(f"Failed to get stream URI from ONVIF device {hostname}:{port}")
+        
+        logger.info(f"Using ONVIF stream: {stream_info.stream_uri}")
+        return cv2.VideoCapture(stream_info.stream_uri)
+    
+    # Handle regular sources
     if source != 0:
         return cv2.VideoCapture(source)
 

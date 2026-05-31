@@ -51,6 +51,8 @@ def main():
         {"name": "Front Camera", "source": "0", "default_mode": "tracking", "enabled": True},
         {"name": "Entrance Camera", "source": "1", "default_mode": "tracking", "enabled": True},
         {"name": "Aisle Camera", "source": "2", "default_mode": "heatmap", "enabled": False},
+        # Example ONVIF camera (commented out by default)
+        # {"name": "ONVIF Camera", "source": "onvif://username:password@192.168.1.100:80", "default_mode": "tracking", "enabled": False},
     ]
 
     conn = sqlite3.connect(db_path)
