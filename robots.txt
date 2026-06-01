@@ -1,0 +1,26 @@
+User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /register
+Disallow: /logout
+Disallow: /profile
+Disallow: /login/verify-otp
+Disallow: /login/resend-otp
+Disallow: /verify-email
+Disallow: /resend-verification
+Disallow: /admin/
+Disallow: /subscription/
+Disallow: /api/
+Disallow: /chatbot/
+Disallow: /video_feed
+Disallow: /comparison_feed
+Disallow: /get_stats
+Disallow: /get_last_heatmap
+Disallow: /export_report
+Disallow: /switch_mode/
+Disallow: /stop
+Disallow: /update_settings
+Disallow: /upload_video
+Disallow: /uploads/
+
+Sitemap: https://retailvision.app/sitemap.xml
