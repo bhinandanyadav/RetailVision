@@ -1175,6 +1175,13 @@
             box-shadow: 0 15px 40px rgba(14, 165, 233, 0.5);
         }
 
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
         /* Stats Section */
         .stats-section {
             margin-bottom: 40px;
@@ -2283,7 +2290,7 @@
                     <div class="status-dot"></div>
                     <span id="headerStatusText" role="status" aria-live="polite">System Ready</span>
                 </div>
-                <a class="logout-link" href="/logout">Logout</a>
+                <a class="logout-link" href="/profile" title="Profile">👤 Profile</a>
             </div>
         </div>
     </header>
@@ -4330,19 +4337,32 @@
             }
             if (reportStartDate && reportStartDate.value) params.append('start_date', reportStartDate.value);
             if (reportEndDate && reportEndDate.value) params.append('end_date', reportEndDate.value);
+            if (reportStartDate && reportStartDate.value && reportEndDate && reportEndDate.value) {
+                if (new Date(reportStartDate.value) > new Date(reportEndDate.value)) {
+                    showToast('Start date must be before end date.', 'warning');
+                    return null;
+                }
+            }
             return params;
         }
 
+        function triggerExport(btn, format) {
+            const params = getReportParams(format);
+            if (!params) return;
+            const original = btn.textContent;
+            btn.textContent = '⏳ Exporting...';
+            btn.disabled = true;
+            showToast(`Generating ${format.toUpperCase()} report...`, 'info', 2000);
+            window.location.href = `/export_report?${params.toString()}`;
+            setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 2500);
+        }
+
         if (exportCsvBtn) {
-            exportCsvBtn.addEventListener('click', () => {
-                window.location.href = `/export_report?${getReportParams('csv').toString()}`;
-            });
+            exportCsvBtn.addEventListener('click', () => triggerExport(exportCsvBtn, 'csv'));
         }
 
         if (exportPdfBtn) {
-            exportPdfBtn.addEventListener('click', () => {
-                window.location.href = `/export_report?${getReportParams('pdf').toString()}`;
-            });
+            exportPdfBtn.addEventListener('click', () => triggerExport(exportPdfBtn, 'pdf'));
         }
 
         fetchCameraSources();

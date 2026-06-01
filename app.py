@@ -1,5 +1,7 @@
 from flask import Flask, render_template, Response, request, jsonify, send_file, session, redirect, url_for, g  # pyright: ignore[reportMissingImports]
 from flask_socketio import SocketIO, emit
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import os
 import base64
 import io
@@ -10,6 +12,10 @@ import hmac
 import hashlib
 import uuid
 import tempfile
+import secrets
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import matplotlib 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -26,6 +32,9 @@ app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 load_dotenv()
 app.secret_key = os.environ.get('STORE_TRACKER_SECRET', 'store-tracker-dev-key')
+
+# ─── Rate limiter ───
+limiter = Limiter(get_remote_address, app=app, default_limits=["200 per minute"], storage_uri="memory://")
 
 DB_PATH = os.environ.get('STORE_TRACKER_DB_PATH', 'store_tracker.sqlite')
 ADMIN_SUBSCRIPTION_AMOUNT_USD_CENTS = int(
@@ -139,10 +148,19 @@ def init_db():
                 email TEXT NOT NULL UNIQUE,
                 role TEXT NOT NULL DEFAULT 'viewer',
                 password_hash TEXT NOT NULL,
+                email_verified INTEGER NOT NULL DEFAULT 0,
+                verify_token TEXT,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
+        # Migrate: add columns if they don't exist yet
+        cur = conn.execute("PRAGMA table_info(users)")
+        existing_cols = {row['name'] for row in cur.fetchall()}
+        if 'email_verified' not in existing_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0")
+        if 'verify_token' not in existing_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN verify_token TEXT")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS camera_sources (
@@ -290,6 +308,54 @@ def init_db():
     conn.close()
 init_db()
 ensure_upload_temp_dir()
+
+# ─── Email Verification Helpers ───
+SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
+SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
+SMTP_USER = os.environ.get('SMTP_USER', '')
+SMTP_PASS = os.environ.get('SMTP_PASS', '')
+SMTP_FROM = os.environ.get('SMTP_FROM', SMTP_USER)
+
+
+def generate_verify_token():
+    return secrets.token_urlsafe(32)
+
+
+def send_verification_email(email, name, token):
+    """Send verification email. Returns True on success, False on failure."""
+    if not SMTP_USER or not SMTP_PASS:
+        print("[EMAIL] SMTP not configured — skipping verification email.")
+        return False
+    verify_url = f"{request.host_url.rstrip('/')}/verify-email?token={token}"
+    subject = "Verify your RetailVision account"
+    body_html = f"""
+    <div style="font-family:JetBrains Mono,monospace;max-width:480px;margin:auto;padding:32px;background:#0f172a;border-radius:12px;color:#e2e8f0;">
+      <h2 style="color:#f1f5f9;">Verify Your Email</h2>
+      <p>Hi {name},</p>
+      <p>Click the button below to verify your email and activate your account.</p>
+      <a href="{verify_url}"
+         style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;margin:16px 0;">
+         Verify Email
+      </a>
+      <p style="color:#94a3b8;font-size:12px;">Or paste this link: {verify_url}</p>
+      <p style="color:#64748b;font-size:11px;">If you did not register, ignore this email.</p>
+    </div>
+    """
+    msg = MIMEMultipart('alternative')
+    msg['From'] = SMTP_FROM
+    msg['To'] = email
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body_html, 'html'))
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASS)
+            server.sendmail(SMTP_FROM, [email], msg.as_string())
+        print(f"[EMAIL] Verification sent to {email}")
+        return True
+    except Exception as exc:
+        print(f"[EMAIL] Failed to send to {email}: {exc}")
+        return False
 
 def init_upload_db():
     conn = get_upload_db_connection()
@@ -677,6 +743,7 @@ def subscription_manage():
 
 
 @app.route('/subscription/cancel', methods=['POST'])
+@limiter.limit("5 per minute")
 def subscription_cancel():
     if not require_login():
         return jsonify({'status': 'error', 'message': 'Login required'}), 401
@@ -728,6 +795,7 @@ def create_razorpay_order(user_id, email, amount_minor_units):
 
 
 @app.route('/webhook/razorpay', methods=['POST'])
+@limiter.limit("100 per minute")
 def razorpay_webhook():
     # Verify signature header
     signature = request.headers.get('X-Razorpay-Signature') or request.headers.get('x-razorpay-signature')
@@ -854,6 +922,7 @@ def home():
 
 
 @app.route('/chatbot/message', methods=['POST'])
+@limiter.limit("20 per minute")
 def chatbot_message():
     try:
         return handle_chat_message(request)
@@ -863,7 +932,15 @@ def chatbot_message():
 
 
 @app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("15 per minute")
 def login():
+    msg = request.args.get('msg')
+    flash_msg = None
+    if msg == 'check_email':
+        flash_msg = 'Registration successful! Please check your email and verify your account before logging in.'
+    elif msg == 'no_smtp':
+        flash_msg = 'Registration successful! Email service is not configured, so your account was auto-verified. You can log in now.'
+
     if request.method == 'POST':
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
@@ -876,7 +953,7 @@ def login():
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, name, email, role, password_hash FROM users WHERE email = ?",
+                "SELECT id, name, email, role, password_hash, email_verified FROM users WHERE email = ?",
                 (email,)
             )
             user = cursor.fetchone()
@@ -928,6 +1005,13 @@ def login():
             )
             return redirect(url_for('admin_subscribe'))
 
+        # Gate: require email verification (skip for admin-created accounts with no verify_token)
+        if not user['email_verified']:
+            return render_template(
+                'login.html',
+                error='Please verify your email first. Check your inbox or resend the verification link.'
+            )
+
         session['role'] = user['role'] or 'viewer'
         session['user_id'] = user['id']
         session['user_name'] = user['name']
@@ -939,10 +1023,11 @@ def login():
             ip_address=request.remote_addr
         )
         return redirect(url_for('home'))
-    return render_template('login.html', error=None)
+    return render_template('login.html', error=None, flash=flash_msg)
 
 
 @app.route('/register', methods=['GET', 'POST'])
+@limiter.limit("10 per minute")
 def register():
     can_create_admin = True
     if request.method == 'POST':
@@ -976,6 +1061,7 @@ def register():
             )
 
         password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        verify_token = generate_verify_token()
 
         conn = None
         cursor = None
@@ -986,8 +1072,8 @@ def register():
             if role == 'admin':
                 role = 'admin_pending'
             cursor.execute(
-                "INSERT INTO users (name, email, role, password_hash) VALUES (?, ?, ?, ?)",
-                (name, email, role, password_hash)
+                "INSERT INTO users (name, email, role, password_hash, verify_token) VALUES (?, ?, ?, ?, ?)",
+                (name, email, role, password_hash, verify_token)
             )
             user_id = cursor.lastrowid
             conn.commit()
@@ -1024,9 +1110,91 @@ def register():
             set_pending_admin_session({'id': user_id, 'name': name, 'email': email})
             return redirect(url_for('admin_subscribe'))
 
-        return redirect(url_for('login'))
+        # Send verification email — if SMTP fails, auto-verify so user can login
+        email_sent = send_verification_email(email, name, verify_token)
+        if not email_sent:
+            try:
+                conn = get_db_connection()
+                conn.execute("UPDATE users SET email_verified = 1 WHERE id = ?", (user_id,))
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
+            log_audit_event('email_auto_verified', user_id=user_id, user_email=email, detail='SMTP not configured', ip_address=request.remote_addr)
+            return redirect(url_for('login', msg='no_smtp'))
+
+        return redirect(url_for('login', msg='check_email'))
 
     return render_template('register.html', error=None, can_create_admin=can_create_admin, selected_role='viewer')
+
+
+@app.route('/verify-email')
+@limiter.limit("10 per minute")
+def verify_email():
+    token = request.args.get('token', '').strip()
+    if not token:
+        return render_template('verify_result.html', success=False, message='Missing verification token.')
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        row = conn.execute(
+            "SELECT id, email FROM users WHERE verify_token = ?", (token,)
+        ).fetchone()
+        if not row:
+            return render_template('verify_result.html', success=False, message='Invalid or expired verification link.')
+        conn.execute(
+            "UPDATE users SET email_verified = 1, verify_token = NULL WHERE id = ?", (row['id'],)
+        )
+        conn.commit()
+        log_audit_event('email_verified', user_id=row['id'], user_email=row['email'], ip_address=request.remote_addr)
+    except Exception as exc:
+        print(f"Verify email error: {exc}")
+        return render_template('verify_result.html', success=False, message='Verification failed. Please try again.')
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    return render_template('verify_result.html', success=True, message='Email verified! You can now log in.')
+
+
+@app.route('/resend-verification', methods=['GET', 'POST'])
+@limiter.limit("5 per minute")
+def resend_verification():
+    if request.method == 'GET':
+        return render_template('resend_verification.html', error=None, success=False)
+
+    email = request.form.get('email', '').strip().lower()
+    if not email:
+        return render_template('resend_verification.html', error='Email is required.', success=False)
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        row = conn.execute(
+            "SELECT id, name, email_verified FROM users WHERE email = ?", (email,)
+        ).fetchone()
+        if not row:
+            # Don't reveal whether the email exists
+            return render_template('resend_verification.html', error=None, success=True)
+        if row['email_verified']:
+            return render_template('resend_verification.html', error=None, success=True)
+        new_token = generate_verify_token()
+        conn.execute("UPDATE users SET verify_token = ? WHERE id = ?", (new_token, row['id']))
+        conn.commit()
+        send_verification_email(email, row['name'], new_token)
+    except Exception as exc:
+        print(f"Resend verification error: {exc}")
+        return render_template('resend_verification.html', error='Something went wrong. Try again.', success=False)
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    return render_template('resend_verification.html', error=None, success=True)
 
 
 @app.route('/admin/subscribe', methods=['GET'])
@@ -1084,6 +1252,7 @@ def admin_subscribe():
 
 
 @app.route('/admin/payment/verify', methods=['POST'])
+@limiter.limit("5 per minute")
 def admin_payment_verify():
     pending_admin_id = session.get('pending_admin_id')
     expected_order_id = session.get('pending_admin_order_id')
@@ -1169,7 +1338,114 @@ def logout():
     return redirect(url_for('login'))
 
 
+@app.route('/profile')
+def profile():
+    if not require_login():
+        return redirect(url_for('login'))
+    user_id = session.get('user_id')
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name, email, role, created_at FROM users WHERE id = ?", (user_id,))
+        user = cursor.fetchone()
+    except Exception:
+        user = None
+    finally:
+        try:
+            cursor.close()
+            conn.close()
+        except Exception:
+            pass
+    if not user:
+        return redirect(url_for('home'))
+    created = user['created_at'] if user and user['created_at'] else 'Unknown'
+    if hasattr(created, 'strftime'):
+        created = created.strftime('%b %d, %Y')
+    return render_template(
+        'profile.html',
+        user_id=user['id'],
+        user_name=user['name'],
+        user_email=user['email'],
+        user_role=user['role'],
+        created_at=created
+    )
+
+
+@app.route('/profile/update-name', methods=['POST'])
+@limiter.limit("5 per minute")
+def profile_update_name():
+    if not require_login():
+        return jsonify({'ok': False, 'error': 'Login required'}), 401
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
+    if not name or len(name) < 2:
+        return jsonify({'ok': False, 'error': 'Name must be at least 2 characters.'})
+    user_id = session.get('user_id')
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET name = ? WHERE id = ?", (name, user_id))
+        conn.commit()
+        session['user_name'] = name
+        log_audit_event('profile_name_update', detail=f"name={name}", user_id=user_id, user_email=session.get('user_email'), ip_address=request.remote_addr)
+        return jsonify({'ok': True, 'message': 'Name updated successfully.'})
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': 'Database error.'})
+    finally:
+        try:
+            cursor.close()
+            conn.close()
+        except Exception:
+            pass
+
+
+@app.route('/profile/update-password', methods=['POST'])
+@limiter.limit("5 per minute")
+def profile_update_password():
+    if not require_login():
+        return jsonify({'ok': False, 'error': 'Login required'}), 401
+    data = request.get_json(silent=True) or {}
+    current_password = data.get('current_password', '')
+    new_password = data.get('new_password', '')
+    if not current_password or not new_password:
+        return jsonify({'ok': False, 'error': 'Both current and new password are required.'})
+    if len(new_password) < 6:
+        return jsonify({'ok': False, 'error': 'New password must be at least 6 characters.'})
+    user_id = session.get('user_id')
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({'ok': False, 'error': 'User not found.'})
+        stored_hash = row['password_hash']
+        if not bcrypt.checkpw(current_password.encode('utf-8'), stored_hash.encode('utf-8')):
+            log_audit_event('profile_password_failed', detail='wrong current password', user_id=user_id, user_email=session.get('user_email'), ip_address=request.remote_addr)
+            return jsonify({'ok': False, 'error': 'Current password is incorrect.'})
+        new_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user_id))
+        conn.commit()
+        log_audit_event('profile_password_update', user_id=user_id, user_email=session.get('user_email'), ip_address=request.remote_addr)
+        return jsonify({'ok': True, 'message': 'Password updated successfully.'})
+    except Exception:
+        return jsonify({'ok': False, 'error': 'Database error.'})
+    finally:
+        try:
+            cursor.close()
+            conn.close()
+        except Exception:
+            pass
+
+
 @app.route('/upload_video', methods=['POST'])
+@limiter.limit("5 per minute")
 def upload_video():
     if not require_login():
         return jsonify({'status': 'error', 'message': 'Login required'}), 401
@@ -1328,6 +1604,7 @@ def comparison_feed():
 
 
 @app.route('/switch_mode/<mode>', methods=['POST'])
+@limiter.limit("10 per minute")
 def switch_mode(mode):
     global current_mode
     if not require_login():
@@ -1342,6 +1619,7 @@ def switch_mode(mode):
 
 
 @app.route('/api/cameras', methods=['GET', 'POST'])
+@limiter.limit("30 per minute")
 def cameras():
     if not require_login():
         return jsonify({'status': 'error', 'message': 'Login required'}), 401
@@ -1485,6 +1763,7 @@ def camera_detail(camera_id):
 
 
 @app.route('/stop', methods=['POST'])
+@limiter.limit("10 per minute")
 def stop():
     if not require_login():
         return jsonify({'status': 'error', 'message': 'Login required'}), 401
@@ -1499,6 +1778,7 @@ def stop():
 
 
 @app.route('/update_settings', methods=['POST'])
+@limiter.limit("10 per minute")
 def update_settings():
     if not require_login():
         return jsonify({'status': 'error', 'message': 'Login required'}), 401
@@ -2033,6 +2313,7 @@ def api_dwell_time():
     return jsonify({'dwell_time': dwell_data, 'source_key': source_key, 'days': days})
 
 @app.route('/api/alerts', methods=['GET'])
+@limiter.limit("30 per minute")
 def api_get_alerts():
     """Get recent alerts with pagination"""
     if not require_login():
@@ -2056,6 +2337,7 @@ def api_get_alerts():
             conn.close()
 
 @app.route('/api/alerts/<int:alert_id>/acknowledge', methods=['POST'])
+@limiter.limit("20 per minute")
 def api_acknowledge_alert(alert_id):
     """Mark alert as acknowledged"""
     if not require_login():
@@ -2073,6 +2355,7 @@ def api_acknowledge_alert(alert_id):
             conn.close()
 
 @app.route('/api/alert_thresholds', methods=['GET', 'POST'])
+@limiter.limit("20 per minute")
 def api_alert_thresholds():
     """Get or update alert thresholds"""
     if not require_login():
@@ -2107,6 +2390,7 @@ def api_alert_thresholds():
             conn.close()
 
 @app.route('/api/webhooks', methods=['GET', 'POST'])
+@limiter.limit("20 per minute")
 def api_webhooks():
     if not require_login():
         return jsonify({'error': 'Unauthorized'}), 401
@@ -2140,6 +2424,7 @@ def api_webhooks():
             conn.close()
 
 @app.route('/api/webhooks/<int:webhook_id>', methods=['DELETE', 'PATCH'])
+@limiter.limit("20 per minute")
 def api_webhook_detail(webhook_id):
     if not require_login():
         return jsonify({'error': 'Unauthorized'}), 401
@@ -2194,6 +2479,7 @@ def _refresh_webhook_urls():
 _refresh_webhook_urls()
 
 @app.route('/api/email-schedules', methods=['GET', 'POST'])
+@limiter.limit("20 per minute")
 def api_email_schedules():
     if not require_login():
         return jsonify({'error': 'Unauthorized'}), 401
@@ -2224,6 +2510,7 @@ def api_email_schedules():
             conn.close()
 
 @app.route('/api/email-schedules/<int:sid>', methods=['DELETE'])
+@limiter.limit("20 per minute")
 def api_email_schedule_delete(sid):
     if not require_login() or get_role() != 'admin':
         return jsonify({'error': 'Unauthorized'}), 403
@@ -2238,6 +2525,7 @@ def api_email_schedule_delete(sid):
             conn.close()
 
 @app.route('/api/push/register', methods=['POST'])
+@limiter.limit("10 per minute")
 def api_push_register():
     if not require_login():
         return jsonify({'error': 'Unauthorized'}), 401
@@ -2262,6 +2550,7 @@ def api_push_register():
             conn.close()
 
 @app.route('/api/push/unregister', methods=['POST'])
+@limiter.limit("10 per minute")
 def api_push_unregister():
     if not require_login():
         return jsonify({'error': 'Unauthorized'}), 401
