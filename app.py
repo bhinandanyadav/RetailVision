@@ -305,6 +305,22 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_source ON alerts(source_key)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_created ON alerts(created_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_snapshots_source_time ON analytics_snapshots(source_key, timestamp)")
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS otp_codes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                email TEXT NOT NULL,
+                code TEXT NOT NULL,
+                purpose TEXT NOT NULL DEFAULT 'login',
+                expires_at TIMESTAMP NOT NULL,
+                used INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_otp_email_purpose ON otp_codes(email, purpose)")
     conn.close()
 init_db()
 ensure_upload_temp_dir()
@@ -355,6 +371,93 @@ def send_verification_email(email, name, token):
         return True
     except Exception as exc:
         print(f"[EMAIL] Failed to send to {email}: {exc}")
+        return False
+
+
+# ─── OTP Helpers ───
+OTP_EXPIRY_MINUTES = 10
+
+
+def generate_otp():
+    return str(secrets.randbelow(900000) + 100000)
+
+
+def create_otp(user_id, email, purpose='login'):
+    code = generate_otp()
+    from datetime import datetime, timedelta
+    expires_at = (datetime.utcnow() + timedelta(minutes=OTP_EXPIRY_MINUTES)).strftime('%Y-%m-%d %H:%M:%S')
+    conn = get_db_connection()
+    try:
+        # Invalidate any previous unused OTPs for same user+purpose
+        conn.execute(
+            "UPDATE otp_codes SET used = 1 WHERE user_id = ? AND purpose = ? AND used = 0",
+            (user_id, purpose)
+        )
+        conn.execute(
+            "INSERT INTO otp_codes (user_id, email, code, purpose, expires_at) VALUES (?, ?, ?, ?, ?)",
+            (user_id, email, code, purpose, expires_at)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return code
+
+
+def verify_otp(email, code, purpose='login'):
+    """Returns (success: bool, user_id: int or None, error: str or None)"""
+    from datetime import datetime
+    conn = get_db_connection()
+    try:
+        row = conn.execute(
+            "SELECT id, user_id, expires_at, used FROM otp_codes WHERE email = ? AND code = ? AND purpose = ? ORDER BY id DESC LIMIT 1",
+            (email, code, purpose)
+        ).fetchone()
+        if not row:
+            return False, None, 'Invalid OTP code.'
+        if row['used']:
+            return False, None, 'OTP has already been used.'
+        expires = datetime.strptime(row['expires_at'], '%Y-%m-%d %H:%M:%S')
+        if datetime.utcnow() > expires:
+            return False, None, 'OTP has expired. Please request a new one.'
+        # Mark OTP as used
+        conn.execute("UPDATE otp_codes SET used = 1 WHERE id = ?", (row['id'],))
+        conn.commit()
+        return True, row['user_id'], None
+    finally:
+        conn.close()
+
+
+def send_otp_email(email, name, code):
+    """Send OTP email. Returns True on success, False on failure."""
+    if not SMTP_USER or not SMTP_PASS:
+        print("[EMAIL] SMTP not configured — skipping OTP email.")
+        return False
+    subject = "Your RetailVision Login Code"
+    body_html = f"""
+    <div style="font-family:JetBrains Mono,monospace;max-width:480px;margin:auto;padding:32px;background:#0f172a;border-radius:12px;color:#e2e8f0;">
+      <h2 style="color:#f1f5f9;">Login Verification</h2>
+      <p>Hi {name},</p>
+      <p>Use the following OTP to complete your login. This code expires in {OTP_EXPIRY_MINUTES} minutes.</p>
+      <div style="text-align:center;margin:24px 0;">
+        <span style="display:inline-block;padding:16px 32px;background:#1e293b;border:2px solid #2563eb;border-radius:12px;font-size:32px;font-weight:700;letter-spacing:8px;color:#60a5fa;">{code}</span>
+      </div>
+      <p style="color:#64748b;font-size:11px;">If you did not request this, ignore this email.</p>
+    </div>
+    """
+    msg = MIMEMultipart('alternative')
+    msg['From'] = SMTP_FROM
+    msg['To'] = email
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body_html, 'html'))
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASS)
+            server.sendmail(SMTP_FROM, [email], msg.as_string())
+        print(f"[EMAIL] OTP sent to {email}")
+        return True
+    except Exception as exc:
+        print(f"[EMAIL] Failed to send OTP to {email}: {exc}")
         return False
 
 def init_upload_db():
@@ -1012,18 +1115,92 @@ def login():
                 error='Please verify your email first. Check your inbox or resend the verification link.'
             )
 
-        session['role'] = user['role'] or 'viewer'
-        session['user_id'] = user['id']
-        session['user_name'] = user['name']
-        session['user_email'] = user['email']
+        # Generate and send OTP — don't set session yet
+        otp_code = create_otp(user['id'], user['email'], purpose='login')
+        otp_sent = send_otp_email(user['email'], user['name'], otp_code)
+
+        session['otp_user_id'] = user['id']
+        session['otp_email'] = user['email']
+        session['otp_name'] = user['name']
+        session['otp_role'] = user['role'] or 'viewer'
+
         log_audit_event(
-            'login_success',
+            'login_otp_sent',
             user_id=user['id'],
             user_email=user['email'],
             ip_address=request.remote_addr
         )
-        return redirect(url_for('home'))
+
+        if not otp_sent:
+            return redirect(url_for('login_otp_verify', error='smtp_failed'))
+
+        return redirect(url_for('login_otp_verify'))
     return render_template('login.html', error=None, flash=flash_msg)
+
+
+@app.route('/login/verify-otp', methods=['GET', 'POST'])
+@limiter.limit("10 per minute")
+def login_otp_verify():
+    otp_user_id = session.get('otp_user_id')
+    otp_email = session.get('otp_email')
+    otp_name = session.get('otp_name')
+    otp_role = session.get('otp_role')
+
+    if not otp_user_id or not otp_email:
+        return redirect(url_for('login'))
+
+    error = None
+    error_param = request.args.get('error')
+    if error_param == 'smtp_failed':
+        error = 'Could not send OTP email. Please try again or contact support.'
+
+    if request.method == 'POST':
+        code = request.form.get('otp', '').strip()
+        if not code or len(code) != 6:
+            return render_template('otp_verify.html', email=otp_email, name=otp_name, error='Please enter a valid 6-digit OTP.')
+
+        success, user_id, otp_error = verify_otp(otp_email, code, purpose='login')
+        if not success:
+            return render_template('otp_verify.html', email=otp_email, name=otp_name, error=otp_error)
+
+        # OTP valid — complete login
+        session.pop('otp_user_id', None)
+        session.pop('otp_email', None)
+        session.pop('otp_name', None)
+        session.pop('otp_role', None)
+        session['role'] = otp_role
+        session['user_id'] = user_id
+        session['user_name'] = otp_name
+        session['user_email'] = otp_email
+
+        log_audit_event(
+            'login_success',
+            user_id=user_id,
+            user_email=otp_email,
+            ip_address=request.remote_addr
+        )
+        return redirect(url_for('home'))
+
+    return render_template('otp_verify.html', email=otp_email, name=otp_name, error=error)
+
+
+@app.route('/login/resend-otp', methods=['POST'])
+@limiter.limit("5 per minute")
+def login_resend_otp():
+    otp_user_id = session.get('otp_user_id')
+    otp_email = session.get('otp_email')
+    otp_name = session.get('otp_name')
+
+    if not otp_user_id or not otp_email:
+        return redirect(url_for('login'))
+
+    otp_code = create_otp(otp_user_id, otp_email, purpose='login')
+    otp_sent = send_otp_email(otp_email, otp_name, otp_code)
+
+    if otp_sent:
+        return redirect(url_for('login_otp_verify', msg='otp_sent'))
+    else:
+        return redirect(url_for('login_otp_verify', error='smtp_failed'))
 
 
 @app.route('/register', methods=['GET', 'POST'])
