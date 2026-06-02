@@ -1,4 +1,3 @@
-myenv
 STORE_TRACKER_DB_PATH=store_tracker.sqlite
 venv/
 .venv/
